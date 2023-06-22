@@ -8,3 +8,4 @@ web/config
 web/scripts
 debug.log
 dependencies.lock
+.DS_Store

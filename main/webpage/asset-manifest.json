@@ -1,0 +1,18 @@
+{
+  "files": {
+    "main.js": "/static/js/main.js",
+    "static/js/chunk.27.js": "/static/js/chunk.27.js",
+    "static/media/plasmawaves.png": "/static/media/plasmawaves.png",
+    "static/media/crazybees.png": "/static/media/crazybees.png",
+    "static/media/rainbow.png": "/static/media/rainbow.png",
+    "static/media/waterfall.png": "/static/media/waterfall.png",
+    "static/media/matrix.png": "/static/media/matrix.png",
+    "static/media/fire.png": "/static/media/fire.png",
+    "static/media/sparkles.png": "/static/media/sparkles.png",
+    "static/media/add.svg": "/static/media/add.svg",
+    "index.html": "/index.html"
+  },
+  "entrypoints": [
+    "static/js/main.js"
+  ]
+}

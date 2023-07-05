@@ -8,6 +8,8 @@
 #include "lwip/netdb.h"
 #include "mdns.h"
 
+#include "nlohmann/json.hpp"
+
 #include "tasks_common.h"
 #include "wifi_app.h"
 #include "http_server.h"
@@ -50,7 +52,7 @@ static bool query_mdns_host(const char *host_name)
     return true;
 }
 
-void start_mdns()
+bool start_mdns()
 {
     // init mdns
     esp_err_t err = mdns_init();
@@ -59,7 +61,7 @@ void start_mdns()
     }
 
     // query wsc.local - if not found - launch mdns service
-    if(query_mdns_host(WIFI_APP_MDNS_HOSTNAME)) return;
+    if(query_mdns_host(WIFI_APP_MDNS_HOSTNAME)) return false;
 
     // set hostname
     ESP_ERROR_CHECK(mdns_hostname_set(WIFI_APP_MDNS_HOSTNAME));
@@ -76,6 +78,8 @@ void start_mdns()
     // init service
     ESP_ERROR_CHECK( mdns_service_add(NULL, "_http", "_tcp", 80, serviceTxtData, 3) );
     ESP_ERROR_CHECK( mdns_service_subtype_add_for_host(NULL, "_http", "_tcp", NULL, "_server") );
+
+    return true;
 }
 
 /**
@@ -94,6 +98,8 @@ static void wifi_app_event_handler(void* arg, esp_event_base_t event_base, int32
         case WIFI_EVENT_AP_START:
             ESP_LOGI(TAG, "WIFI_EVENT_AP_START");
             start_mdns();
+            // start http server
+            wifi_app_send_message(WIFI_APP_MSG_START_HTTP_SREVER);
             break;
 
         case WIFI_EVENT_AP_STOP:
@@ -129,7 +135,12 @@ static void wifi_app_event_handler(void* arg, esp_event_base_t event_base, int32
         {
         case IP_EVENT_STA_GOT_IP:
             ESP_LOGI(TAG, "IP_EVENT_STA_GOT_IP");
-            start_mdns();
+            {
+                bool mdnsState = start_mdns();
+                //start http server
+                wifi_app_send_message(WIFI_APP_MSG_START_HTTP_SREVER);
+                if(!mdnsState)  wifi_app_send_message(WIFI_APP_MSG_REGISTER_ON_HOST);
+            }
             break;
         
         default:
@@ -244,8 +255,6 @@ static void wifi_app_task(void* pvParams)
 
     wifi_app_send_message(wifi_app_config.enableAP ? WIFI_APP_MSG_START_AP : WIFI_APP_MSG_START_STA);
 
-    // start http server
-    wifi_app_send_message(WIFI_APP_MSG_START_HTTP_SREVER);
 
     for(;;)
     {
@@ -277,6 +286,10 @@ static void wifi_app_task(void* pvParams)
                 wifi_app_sta_config();
                 wifi_app_restart();
                 break;
+
+            case WIFI_APP_MSG_REGISTER_ON_HOST:
+                ESP_LOGI(TAG, "WIFI_APP_MSG_REGISTER_ON_HOST");
+                http_server_register_on_host();
 
             default:
                 break;

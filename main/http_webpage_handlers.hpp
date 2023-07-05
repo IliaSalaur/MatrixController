@@ -23,8 +23,8 @@ extern const uint8_t manifest_json_start[] asm("_binary_manifest_json_start");
 extern const uint8_t manifest_json_end[] asm("_binary_manifest_json_end");
 
 // Embedded file: icons.woff2
-extern const uint8_t icons_woff2_start[] asm("_binary_icons_woff2_start");
-extern const uint8_t icons_woff2_end[] asm("_binary_icons_woff2_end");
+// extern const uint8_t icons_woff2_start[] asm("_binary_icons_woff2_start");
+// extern const uint8_t icons_woff2_end[] asm("_binary_icons_woff2_end");
 
 // Embedded file: asset-manifest.json
 extern const uint8_t asset_manifest_json_start[] asm("_binary_asset_manifest_json_start");
@@ -87,7 +87,7 @@ static const std::map<std::string, BinHandlerData> handlers{
     {"/settings", {index_html_start, index_html_end, "text/html"}},
     {"/style.css", {style_css_start, style_css_end, "text/css"}},
     {"/favicon.ico", {favicon_ico_start, favicon_ico_end, "image/x-icon"}},
-    {"/icons.woff2", {icons_woff2_start, icons_woff2_end, "font/woff2"}},
+    // {"/icons.woff2", {icons_woff2_start, icons_woff2_end, "font/woff2"}},
     {"/manifest.json", {manifest_json_start, manifest_json_end, "application/json"}},
     {"/asset-manifest.json", {asset_manifest_json_start, asset_manifest_json_end, "application/json"}},
     {"/static/js/chunk.27.js", {chunk_27_js_start, chunk_27_js_end, "application/javascript"}},

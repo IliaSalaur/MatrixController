@@ -23,6 +23,7 @@
 #define MAX_PASSWORD_LENGTH         64              // IEEE standard maximum
 #define MAX_CONNECTION_RETRIES      5               // Retry number on disconnect
 #define WIFI_APP_MDNS_HOSTNAME      "wsc"           // MDNS hostname
+#define WIFI_APP_API_HOSTNAME       "wsc.local"     // API hostname
 
 // netif object for the Station and Access Point
 extern esp_netif_t* esp_netif_sta;
@@ -45,7 +46,8 @@ typedef enum wifi_app_message
     WIFI_APP_MSG_CONNECTING_FROM_HTTP_SERVER,
     WIFI_APP_MSG_STA_CONNECTED_GOT_IP,
     WIFI_APP_MSG_START_STA,
-    WIFI_APP_MSG_START_AP
+    WIFI_APP_MSG_START_AP,
+    WIFI_APP_MSG_REGISTER_ON_HOST
 } wifi_app_message_e;
 
 /**

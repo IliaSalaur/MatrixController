@@ -8,6 +8,7 @@
 #include "http_webpage_handlers.hpp"
 #include "tasks_common.h"
 #include "wifi_app.h"
+#include "esp_http_client.h"
 
 #include "DynamicConfig/DynamicConfig.hpp"
 #include "DynamicConfig/Loaders/NVSConfigLoader.hpp"
@@ -34,7 +35,39 @@ QueueHandle_t g_http_server_dataQueue;
 static httpd_handle_t http_server_handle = NULL;
 
 // list holding all matrices
-static std::list<MatrixInfo> http_server_matrices{};
+std::list<MatrixInfo> http_server_matrices{};
+
+void http_server_register_on_host()
+{
+    char local_response_buffer[k_http_server_data_buffer_size]{0};
+    esp_http_client_config_t config = {
+        .host = WIFI_APP_API_HOSTNAME,
+        .path = "/registerDevice",
+        .query = "esp",
+        .event_handler = nullptr,
+        .user_data = local_response_buffer,        // Pass address of local buffer to get response
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    // POST
+    json j = http_server_matrices.front();
+    std::string data = j.dump();
+
+    esp_http_client_set_url(client, "http://"WIFI_APP_API_HOSTNAME"/registerDevice");
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, data.c_str(), data.length());
+    esp_err_t err = esp_http_client_perform(client);
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %"PRId64,
+                esp_http_client_get_status_code(client),
+                esp_http_client_get_content_length(client));
+    } else {
+        ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+    }
+    esp_http_client_cleanup(client);
+}
 
 /**
  * @brief POST handler requested when accessing the web page
@@ -72,11 +105,12 @@ static esp_err_t http_server_post_handler(httpd_req_t* req)
     }
 
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, "ok", 3);
 
     return ESP_OK;
 }
-
+#error MAKE AN OPTIONS HEADER TO SATISFY CORS PREFLIGHT REQUEST
 static esp_err_t http_server_setConfigs_handler(httpd_req_t* req)
 {
     ESP_LOGI(TAG, "set config requested");
@@ -130,6 +164,7 @@ static esp_err_t http_server_setConfigs_handler(httpd_req_t* req)
     loader.commit();
 
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, "ok", 3);
 
     return ESP_OK;
@@ -173,14 +208,16 @@ static esp_err_t http_server_registerDevice_handler(httpd_req_t* req)
     if(it != http_server_matrices.end())
     {
         ESP_LOGI(TAG, "Device with id %lu found, updating lastTimePing", it->id);
-        it->lastTimePing = esp_timer_get_time() * 1000;
+        it->lastTimePing = esp_timer_get_time() / 1000;
     }
     else {
-        ESP_LOGI(TAG, "Registering new device with id %lu and tag %s", newMatrix.id, newMatrix.tag.c_str());
+        ESP_LOGI(TAG, "Registering new device with id %lu and tag %s", newMatrix.id, newMatrix.tag.c_str());        
         http_server_matrices.push_back(std::move(newMatrix));
+        http_server_matrices.back().lastTimePing = esp_timer_get_time() / 1000;
     }
 
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, "ok", 3);
 
     return ESP_OK;
@@ -192,6 +229,7 @@ static esp_err_t http_server_getConfigs_handler(httpd_req_t* req)
     const std::string s = j.dump();
 
     httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, (const char*) s.c_str(), s.size());
     return ESP_OK;
 }
@@ -201,9 +239,9 @@ static esp_err_t http_server_getDevices_handler(httpd_req_t* req)
     ESP_LOGI(TAG, "get devices requested");
 
     // check timeouts
-    http_server_matrices.remove_if([](const auto& item){
-        return item.lastTimePing != -1 && esp_timer_get_time() * 1000 - item.lastTimePing > k_http_server_devices_timeout;
-    });
+    // http_server_matrices.remove_if([](const auto& item){
+    //     return item.lastTimePing != -1 && esp_timer_get_time() / 1000 - item.lastTimePing > k_http_server_devices_timeout;
+    // });
 
     const json j = http_server_matrices;
     const std::string s = j.dump();
@@ -345,17 +383,23 @@ void http_server_start(void)
         uint8_t mac[6]{};
         ESP_ERROR_CHECK(esp_wifi_get_mac(wifi_app_config.enableAP ? WIFI_IF_AP : WIFI_IF_STA, mac));
 
-        uint32_t esp_id = mac[0] | (uint32_t)mac[1] << 8 | (uint32_t)mac[2] << 16 | (uint32_t)mac[3] << 24;
+        uint32_t esp_id = mac[2] | (uint32_t)mac[3] << 8 | (uint32_t)mac[4] << 16 | (uint32_t)mac[5] << 24;
 
         esp_netif_ip_info_t ip_info{};
-        ESP_ERROR_CHECK(esp_netif_get_ip_info(wifi_app_config.enableAP ? esp_netif_ap : esp_netif_sta, &ip_info));
+        ESP_ERROR_CHECK(esp_netif_get_ip_info(wifi_app_config.enableAP ? esp_netif_ap : esp_netif_sta, &ip_info));        
+
+        uint32_t ip = ip_info.ip.addr;
+        // reverse the order of bytes
+        ip = (ip & 0xff000000) >> 24 |  (ip & 0xff0000) >> 8 | (ip & 0xff00) << 8 | (ip & 0xff) << 24;
 
         http_server_matrices.push_front(MatrixInfo{
             esp_id,
-            ip_info.ip.addr,
+            ip,
             -1,
-            "wsc-main"
+            wifi_app_config.enableAP ? "wsc-main" : std::string("wsc" + std::to_string(esp_id)).c_str()
         });
+
+        ESP_LOGI(TAG, "MatrixInfo ip:%lu and id:%lu", ip, esp_id);
     }
 }
 

@@ -58,19 +58,6 @@ struct MatrixInfo
 };
 
 /**
- * Messages for the HTTP monitor
- */
-typedef enum http_server_message
-{
-    HTTP_MSG_WIFI_CONNECT_INIT = 0,
-    HTTP_MSG_WIFI_CONNECT_SUCCESS,
-    HTTP_MSG_WIFI_CONNECT_FAIL,
-    HTTP_MSG_OTA_UPDATE_SUCCESSFUL,
-    HTTP_MSG_OTA_UPDATE_FAILED,
-    HTTP_MSG_OTA_UPDATE_INITIALIZED
-} http_server_message_e;
-
-/**
  * @brief Starts the HTTP server
  */
 void http_server_start(void);
@@ -79,4 +66,9 @@ void http_server_start(void);
  * @brief Stops the HTTP server
  */
 void http_server_stop(void);
+
+/**
+ * @brief Sends a register request to the host, containing MatrixInfo
+ */
+void http_server_register_on_host(void);
 #endif

@@ -6,7 +6,7 @@ idf_component_register(
         "webpage/style.css"
         "webpage/favicon.ico"
         "webpage/manifest.json"
-        "webpage/icons.woff2"
+        #[["webpage/icons.woff2"]]
         "webpage/asset-manifest.json"
         "webpage/static/js/chunk.27.js"
         "webpage/static/js/main.js"

@@ -23,7 +23,8 @@ const std::map<std::string_view, EffectsEnum> EffectsMap{
     {"PlasmaWaves", EffectsEnum::PLASMAWAVES},
     {"CrazyBees", EffectsEnum::CRAZYBEES},
     {"Sparkles", EffectsEnum::SPARKLES},
-    {"Waterfall", EffectsEnum::WATERFALL}
+    {"Waterfall", EffectsEnum::WATERFALL},
+    {"TextSequence", EffectsEnum::TEXT_SEQUENCE}
 };
 
 class EffectFactory

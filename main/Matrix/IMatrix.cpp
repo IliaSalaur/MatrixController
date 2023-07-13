@@ -9,9 +9,9 @@ IMatrix::IMatrix(uint8_t width, uint8_t height) :
     _leftSideWidth(0),
     _rightSideWidth(0),
     _leftChild(nullptr),
-    _rightChild(nullptr),
-    _pixels(_width, std::vector<rgb_t>(_height, {0, 0, 0}))
+    _rightChild(nullptr)
 {
+    
 }
 
 void IMatrix::setBrightness(uint8_t brig)
@@ -44,7 +44,7 @@ void IMatrix::showPixel(int x, int y, rgb_t col)
         _leftChild->showPixel((x < 0 ? x + _width : x), (y < 0 ? y + _height : y), col);
         return;
     }   
-    this->_pixels[x][y] = col; 
+    this->_drawPixel(x, y, col);
 }
 
 void IMatrix::show(const std::vector<std::vector<rgb_t>>& leds, size_t size)

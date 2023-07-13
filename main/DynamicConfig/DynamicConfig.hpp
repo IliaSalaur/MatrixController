@@ -44,7 +44,7 @@ public:
     const std::string& getConfig(const std::string& cfgName)
     {
         if(_cfgs.find(cfgName) != _cfgs.end()) return _cfgs[cfgName];
-        return {};
+        return std::string{};
     }
 
     void saveConfig(const std::string& cfgName, const std::string&& cfgValue)

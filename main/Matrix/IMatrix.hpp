@@ -3,9 +3,8 @@
 #ifndef WS_IMATRIX_H
 #define WS_IMATRIX_H
 
-#include <ctype.h>
+#include <cstdint>
 #include <memory>
-#include <vector>
 
 #include <Effects/Framebuffer.hpp>
 
@@ -32,8 +31,6 @@ protected:
     std::unique_ptr<IMatrix> _leftChild;
     std::unique_ptr<IMatrix> _rightChild;   
 
-    std::vector<std::vector<rgb_t>> _pixels;
-
     uint8_t _processRightWidth();
     uint8_t _processLeftWidth();
     void _processTotalWidth();
@@ -47,7 +44,7 @@ protected:
     // /// @param x processed x coordinate of the local matrix
     // /// @param y processed y coordinate of the local matrix
     // /// @param col hex rgb24 color 
-    // virtual void _drawPixel(int x, int y, uint32_t col) = 0;
+    virtual void _drawPixel(int x, int y, rgb_t col) = 0;
 public:
     /// @param width matrix width
     /// @param height matrix height

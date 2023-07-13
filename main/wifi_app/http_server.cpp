@@ -110,7 +110,38 @@ static esp_err_t http_server_post_handler(httpd_req_t* req)
 
     return ESP_OK;
 }
-#error MAKE AN OPTIONS HEADER TO SATISFY CORS PREFLIGHT REQUEST
+
+static esp_err_t http_server_setEffect_handler(httpd_req_t* req)
+{
+    ESP_LOGI(TAG, "setEffect requested");
+
+    
+
+    size_t recv_size = MIN(req->content_len, sizeof(data.data));
+    ESP_LOGI("post", "LEN:%u, cutted:%u", req->content_len, recv_size);
+
+    int ret = httpd_req_recv(req, data.data, recv_size);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+
+    strncpy(data.uri, req->uri, sizeof(data.uri));
+
+    ESP_LOGI(TAG, "POST data: |%s|", data.data);
+    if (xQueueSend(g_http_server_dataQueue, static_cast<void*>(&data), 1) != pdPASS) {
+      ESP_LOGW("post", "failed to send data to the queue in one tick");
+    }
+
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_send(req, "ok", 3);
+
+    return ESP_OK;
+}
+
 static esp_err_t http_server_setConfigs_handler(httpd_req_t* req)
 {
     ESP_LOGI(TAG, "set config requested");
@@ -239,9 +270,9 @@ static esp_err_t http_server_getDevices_handler(httpd_req_t* req)
     ESP_LOGI(TAG, "get devices requested");
 
     // check timeouts
-    // http_server_matrices.remove_if([](const auto& item){
-    //     return item.lastTimePing != -1 && esp_timer_get_time() / 1000 - item.lastTimePing > k_http_server_devices_timeout;
-    // });
+    http_server_matrices.remove_if([](const auto& item){
+        return item.lastTimePing != -1 && esp_timer_get_time() / 1000 - item.lastTimePing > k_http_server_devices_timeout;
+    });
 
     const json j = http_server_matrices;
     const std::string s = j.dump();
@@ -267,6 +298,23 @@ static esp_err_t http_server_commitConfigs_handler(httpd_req_t* req)
     return res;
 }
 
+static esp_err_t http_server_corsPreflight_handler(httpd_req_t* req)
+{
+    ESP_LOGI(TAG, "CORS Preflight requested");
+
+    httpd_resp_set_type(req, "text/plain");
+    // Setting response code 204 - No Content
+    httpd_resp_set_status(req, HTTPD_204);
+    // Satisfying CORS headers
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "*");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST, GET, OPTIONS, DELETE");
+    httpd_resp_set_hdr(req, "Access-Control-Max-Age", "86400");
+
+    httpd_resp_send(req, "", 1);
+    return ESP_OK;
+}
+
 /**
  * @brief Sets up the default httpd server config
  * @return http server instance handle if successful, NULL otherwise 
@@ -286,7 +334,7 @@ static httpd_handle_t http_server_configure(void)
     config.stack_size = HTTP_SERVER_TASK_STACK_SIZE;
 
     // Increase uri handlers
-    config.max_uri_handlers = 30;
+    config.max_uri_handlers = 40;
 
     // Increase the timeout limit
     config.recv_wait_timeout = 10;
@@ -312,6 +360,15 @@ static httpd_handle_t http_server_configure(void)
         };
         httpd_register_uri_handler(http_server_handle, &setEffect);
 
+        // register /setEffect(cors preflight OPTIONS) handler
+        httpd_uri_t corsPreflightSetEffect{
+            "/setEffect",                           // URI
+            HTTP_OPTIONS,                           // Method: OPTIONS
+            &http_server_corsPreflight_handler,     // Handler function
+            NULL                                    // User context: NULL (not used)
+        };
+        httpd_register_uri_handler(http_server_handle, &corsPreflightSetEffect);
+
         // register /setTextTemplate handler
         httpd_uri_t setTextTemplate{
             "/setTextTemplate",                     // URI
@@ -320,6 +377,15 @@ static httpd_handle_t http_server_configure(void)
             NULL                                    // User context: NULL (not used)
         };
         httpd_register_uri_handler(http_server_handle, &setTextTemplate);
+
+        // register /setTextTemplate(cors preflight OPTIONS) handler
+        httpd_uri_t corsPreflightSetTextTemplate{
+            "/setTextTemplate",                     // URI
+            HTTP_OPTIONS,                           // Method: OPTIONS
+            &http_server_corsPreflight_handler,     // Handler function
+            NULL                                    // User context: NULL (not used)
+        };
+        httpd_register_uri_handler(http_server_handle, &corsPreflightSetTextTemplate);
 
         // register /setConfigs handler
         httpd_uri_t setConfigs{
@@ -330,7 +396,16 @@ static httpd_handle_t http_server_configure(void)
         };
         httpd_register_uri_handler(http_server_handle, &setConfigs);
 
-        // register /setConfigs handler
+        // register /setConfigs(cors preflight OPTIONS) handler
+        httpd_uri_t corsPreflightSetConfigs{
+            "/setConfigs",                     // URI
+            HTTP_OPTIONS,                           // Method: OPTIONS
+            &http_server_corsPreflight_handler,     // Handler function
+            NULL                                    // User context: NULL (not used)
+        };
+        httpd_register_uri_handler(http_server_handle, &corsPreflightSetConfigs);
+
+        // register /getConfigs handler
         httpd_uri_t getConfigs{
             "/getConfigs",                      // URI
             HTTP_GET,                           // Method: GET
@@ -364,7 +439,7 @@ static httpd_handle_t http_server_configure(void)
             &http_server_registerDevice_handler,    // Handler function
             NULL                                    // User context: NULL (not used)
         };
-        httpd_register_uri_handler(http_server_handle, &registerDevice);
+        httpd_register_uri_handler(http_server_handle, &registerDevice);        
 
         http_server_register_webpage(http_server_handle);
 

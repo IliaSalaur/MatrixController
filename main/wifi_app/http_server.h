@@ -17,22 +17,22 @@ constexpr size_t k_http_server_devices_timeout = 15000; //ms
  * @brief 
  * 
  */
-typedef struct http_server_data{
+struct http_server_data{
     char uri[CONFIG_HTTPD_MAX_URI_LEN + 1];
     char data[k_http_server_data_buffer_size];
-} http_server_data_t;
+};
 
 constexpr size_t k_http_server_dataQueue_size = 1;
-constexpr size_t k_http_server_data_size = sizeof(http_server_data_t);
+constexpr size_t k_http_server_data_size = sizeof(http_server_data);
 
 struct MatrixInfo
 {
-    uint32_t id;
-    uint32_t ip;
+    uint32_t id{0};
+    uint32_t ip{0};
     // size_t width;
     // size_t height;  
-    int64_t lastTimePing;  
-    std::string tag;
+    int64_t lastTimePing{-1};  
+    std::string tag{};
 
     MatrixInfo()
         :
@@ -54,7 +54,7 @@ struct MatrixInfo
         tag{tag_}
     {}
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MatrixInfo, id, ip, lastTimePing, tag)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(MatrixInfo, id, ip, tag)
 };
 
 /**

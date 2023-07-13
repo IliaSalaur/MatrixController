@@ -10,7 +10,8 @@ UartMatrix::UartMatrix(uint8_t w, uint8_t h, uart_port_t uartPort, int baudrate)
     IMatrix{w, h},
     m_brig{100},
     m_port{uartPort},
-    m_baudrate{baudrate}
+    m_baudrate{baudrate},
+    m_pixels(w, std::vector<rgb_t>(h, rgb_t{0, 0, 0}))
 {
 
 }
@@ -54,7 +55,7 @@ void UartMatrix::_redraw()
     {
         for(uint16_t y = 0; y < _height; y++)
         {
-            rgb_t col = _pixels[x][y];
+            rgb_t col = m_pixels[x][y];
 
             data[i++] = col.r / 2 != '\r' ? col.r / 2 : 14;
             data[i++] = col.g / 2 != '\r' ? col.g / 2 : 14;
@@ -75,4 +76,12 @@ void UartMatrix::_redraw()
     int64_t t = esp_timer_get_time();
     uart_write_bytes(m_port, data, i);
     // ESP_LOGI("uart", "uart_write_bytes done in %lldus", esp_timer_get_time() - t);
+}
+
+void UartMatrix::_drawPixel(int x, int y, rgb_t col)
+{
+    if(x < 0 || x >= _width || y < 0 || y >= _height)
+        return;
+
+    m_pixels[x][y] = col;
 }

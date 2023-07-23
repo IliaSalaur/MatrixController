@@ -3,9 +3,11 @@
 
 #include <memory>
 
+// Utils
 #include "AbstractEffect.hpp"
 #include "Framebuffer.hpp"
-#include "Animation.hpp"
+
+// Effects
 #include "Rainbow.hpp"
 #include "Fire.hpp"
 #include "Matrix.hpp"
@@ -13,6 +15,7 @@
 #include "CrazyBees.hpp"
 #include "Waterfall.hpp"
 #include "Sparkles.hpp"
+#include "Snowfall.hpp"
 
 #include "nlohmann/json.hpp"
 
@@ -24,6 +27,7 @@ const std::map<std::string_view, EffectsEnum> EffectsMap{
     {"CrazyBees", EffectsEnum::CRAZYBEES},
     {"Sparkles", EffectsEnum::SPARKLES},
     {"Waterfall", EffectsEnum::WATERFALL},
+    {"SnowFall", EffectsEnum::SNOWFALL},
     {"TextSequence", EffectsEnum::TEXT_SEQUENCE}
 };
 
@@ -54,6 +58,9 @@ public:
 
         case EffectsEnum::WATERFALL:
             return std::make_unique<Waterfall>(fb);
+
+        case EffectsEnum::SNOWFALL:
+            return std::make_unique<SnowFall>(fb);
 
         default:
             return nullptr;

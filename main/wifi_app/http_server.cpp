@@ -13,6 +13,10 @@
 #include "DynamicConfig/DynamicConfig.hpp"
 #include "DynamicConfig/Loaders/NVSConfigLoader.hpp"
 
+#include "Effects/EffectFactory.hpp"
+#include "Effects/Animation.hpp"
+#include "TextEffect/TextSequenceEffect.hpp"
+
 #include "nlohmann/json.hpp"
 
 using nlohmann::json;
@@ -28,8 +32,8 @@ extern DynamicConfig conf;
 // extern config loader
 extern NVSConfigLoader loader;
 
-// Global Queue to handle incoming POST data for the /setEffect and /setTextTemplate
-QueueHandle_t g_http_server_dataQueue;
+extern QueueHandle_t g_animation_effects_queue;
+extern QueueHandle_t g_child_matrices_queue;
 
 // HTTP server task handle
 static httpd_handle_t http_server_handle = NULL;
@@ -53,14 +57,14 @@ void http_server_register_on_host()
     json j = http_server_matrices.front();
     std::string data = j.dump();
 
-    esp_http_client_set_url(client, "http://"WIFI_APP_API_HOSTNAME"/registerDevice");
+    esp_http_client_set_url(client, "http://" WIFI_APP_API_HOSTNAME "/registerDevice");
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, data.c_str(), data.length());
     esp_err_t err = esp_http_client_perform(client);
 
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %"PRId64,
+        ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %" PRId64,
                 esp_http_client_get_status_code(client),
                 esp_http_client_get_content_length(client));
     } else {
@@ -74,53 +78,15 @@ void http_server_register_on_host()
  * @param req HTTP request for which the uri needs to be handled
  * @return ESP_OK if succeded
  */
-static esp_err_t http_server_post_handler(httpd_req_t* req)
+extern "C" esp_err_t http_server_setTextTemplate_handler(httpd_req_t* req)
 {
-    ESP_LOGI(TAG, "post requested");
+    ESP_LOGI(TAG, "setTextTemplate requested");
+    char buf[k_http_server_data_buffer_size]{};
 
-    http_server_data data{};
-    /* Truncate if content length larger than the buffer */
-    size_t recv_size = MIN(req->content_len, sizeof(data.data));
+    size_t recv_size = MIN(req->content_len, k_http_server_data_buffer_size);
     ESP_LOGI("post", "LEN:%u, cutted:%u", req->content_len, recv_size);
 
-    int ret = httpd_req_recv(req, data.data, recv_size);
-    if (ret <= 0) {  /* 0 return value indicates connection closed */
-        /* Check if timeout occurred */
-        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
-            /* In case of timeout one can choose to retry calling
-             * httpd_req_recv(), but to keep it simple, here we
-             * respond with an HTTP 408 (Request Timeout) error */
-            httpd_resp_send_408(req);
-        }
-        return ESP_FAIL;
-    }
-
-    strncpy(data.uri, req->uri, sizeof(data.uri));
-
-    ESP_LOGI(TAG, "POST data: |%s|", data.data);
-    // Send the data to the queue
-    if (xQueueSend(g_http_server_dataQueue, static_cast<void*>(&data), 1) != pdPASS) {
-      // Failed to send data in 1 tick, make a log
-      ESP_LOGW("post", "failed to send data to the queue in one tick");
-    }
-
-    httpd_resp_set_type(req, "text/html");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    httpd_resp_send(req, "ok", 3);
-
-    return ESP_OK;
-}
-
-static esp_err_t http_server_setEffect_handler(httpd_req_t* req)
-{
-    ESP_LOGI(TAG, "setEffect requested");
-
-    
-
-    size_t recv_size = MIN(req->content_len, sizeof(data.data));
-    ESP_LOGI("post", "LEN:%u, cutted:%u", req->content_len, recv_size);
-
-    int ret = httpd_req_recv(req, data.data, recv_size);
+    int ret = httpd_req_recv(req, buf, recv_size);
     if (ret <= 0) {
         if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
             httpd_resp_send_408(req);
@@ -128,13 +94,25 @@ static esp_err_t http_server_setEffect_handler(httpd_req_t* req)
         return ESP_FAIL;
     }
 
-    strncpy(data.uri, req->uri, sizeof(data.uri));
+    ESP_LOGI(TAG, "POST data: |%s|", buf);
+    json j = json::parse(buf);
+    ESP_LOGI(TAG, "JSON Done");
 
-    ESP_LOGI(TAG, "POST data: |%s|", data.data);
-    if (xQueueSend(g_http_server_dataQueue, static_cast<void*>(&data), 1) != pdPASS) {
+    TextSequenceEffect* rawPtr = 
+        new TextSequenceEffect{
+            nullptr, 
+            j["properties"].get<std::vector<TextTemplate>>()
+        };
+    ESP_LOGI(TAG, "setTextTemplate -> ptr addr:%p", rawPtr);
+
+    if(
+        xQueueSend(
+            g_animation_effects_queue, 
+            static_cast<void*>(&rawPtr), 
+            1)  != pdPASS) {
       ESP_LOGW("post", "failed to send data to the queue in one tick");
     }
-
+    
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, "ok", 3);
@@ -142,7 +120,52 @@ static esp_err_t http_server_setEffect_handler(httpd_req_t* req)
     return ESP_OK;
 }
 
-static esp_err_t http_server_setConfigs_handler(httpd_req_t* req)
+extern "C" esp_err_t http_server_setEffect_handler(httpd_req_t* req)
+{
+    ESP_LOGI(TAG, "setEffect requested");
+
+    char buf[k_http_server_data_buffer_size]{};
+
+    size_t recv_size = MIN(req->content_len, k_http_server_data_buffer_size);
+    ESP_LOGI("post", "LEN:%u, cutted:%u", req->content_len, recv_size);
+
+    int ret = httpd_req_recv(req, buf, recv_size);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "POST data: |%s|", buf);
+    json j = json::parse(buf);
+    ESP_LOGI(TAG, "JSON Done");
+
+    std::unique_ptr<AbstractEffect> ptr{EffectFactory::getEffect(nullptr, j)};
+
+    AbstractEffect* rawPtr = ptr.get();
+
+    // We've sent the raw pointer to AbstractEffect to the queue. If we don't release the ownership, std::unique_ptr will call a delete on that pointer    
+    ptr.release();
+
+    ESP_LOGI(TAG, "setEffect -> ptr addr:%p", rawPtr);
+
+    if(
+        xQueueSend(
+            g_animation_effects_queue, 
+            static_cast<void*>(&rawPtr), 
+            1)  != pdPASS) {
+      ESP_LOGW("post", "failed to send data to the queue in one tick");
+    }
+    
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_send(req, "ok", 3);
+
+    return ESP_OK;
+}
+
+extern "C" esp_err_t http_server_setConfigs_handler(httpd_req_t* req)
 {
     ESP_LOGI(TAG, "set config requested");
 
@@ -201,7 +224,7 @@ static esp_err_t http_server_setConfigs_handler(httpd_req_t* req)
     return ESP_OK;
 }
 
-static esp_err_t http_server_registerDevice_handler(httpd_req_t* req)
+extern "C" esp_err_t http_server_registerDevice_handler(httpd_req_t* req)
 {
     ESP_LOGI(TAG, "register device requested");
 
@@ -254,7 +277,50 @@ static esp_err_t http_server_registerDevice_handler(httpd_req_t* req)
     return ESP_OK;
 }
 
-static esp_err_t http_server_getConfigs_handler(httpd_req_t* req)
+extern "C" esp_err_t http_server_addChild_handler(httpd_req_t* req)
+{
+    ESP_LOGI(TAG, "register device requested");
+
+    char buf[k_http_server_data_buffer_size]{0};
+    /* Truncate if content length larger than the buffer */
+    size_t recv_size = MIN(req->content_len, k_http_server_data_buffer_size);
+    ESP_LOGI("post", "LEN:%u, cutted:%u", req->content_len, recv_size);
+
+    int ret = httpd_req_recv(req, buf, recv_size);
+    if (ret <= 0) {  /* 0 return value indicates connection closed */
+        /* Check if timeout occurred */
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            /* In case of timeout one can choose to retry calling
+             * httpd_req_recv(), but to keep it simple, here we
+             * respond with an HTTP 408 (Request Timeout) error */
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "POST data: |%s|", buf);
+
+    // Parse the data to the json obj
+    const json j = json::parse(buf);
+    MatrixInfo* infoPtr = new MatrixInfo{j.get<MatrixInfo>()};
+
+    if(xQueueSend(
+        g_child_matrices_queue,
+        static_cast<void*>(&infoPtr),
+        1
+    ) != pdPASS)
+    {
+        ESP_LOGW(TAG, "Unable to pass a MatrixInfo pointer to the queue");
+    }
+
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_send(req, "ok", 3);
+
+    return ESP_OK;
+}
+
+extern "C" esp_err_t http_server_getConfigs_handler(httpd_req_t* req)
 {    
     const json j = conf.getConfigs();
     const std::string s = j.dump();
@@ -265,7 +331,7 @@ static esp_err_t http_server_getConfigs_handler(httpd_req_t* req)
     return ESP_OK;
 }
 
-static esp_err_t http_server_getDevices_handler(httpd_req_t* req)
+extern "C" esp_err_t http_server_getDevices_handler(httpd_req_t* req)
 {    
     ESP_LOGI(TAG, "get devices requested");
 
@@ -282,7 +348,7 @@ static esp_err_t http_server_getDevices_handler(httpd_req_t* req)
     return ESP_OK;
 }
 
-static esp_err_t http_server_commitConfigs_handler(httpd_req_t* req)
+extern "C" esp_err_t http_server_commitConfigs_handler(httpd_req_t* req)
 {
     ESP_LOGI(TAG, "commit requested");
 
@@ -298,7 +364,7 @@ static esp_err_t http_server_commitConfigs_handler(httpd_req_t* req)
     return res;
 }
 
-static esp_err_t http_server_corsPreflight_handler(httpd_req_t* req)
+extern "C" esp_err_t http_server_corsPreflight_handler(httpd_req_t* req)
 {
     ESP_LOGI(TAG, "CORS Preflight requested");
 
@@ -340,8 +406,6 @@ static httpd_handle_t http_server_configure(void)
     config.recv_wait_timeout = 10;
     config.send_wait_timeout = 10;
 
-
-
     ESP_LOGI(TAG, 
         "http_server_configure: starting server on port %d with task priority: %d", 
         config.server_port,
@@ -355,7 +419,7 @@ static httpd_handle_t http_server_configure(void)
         httpd_uri_t setEffect{
             "/setEffect",                       // URI
             HTTP_POST,                          // Method: POST
-            &http_server_post_handler,          // Handler function
+            &http_server_setEffect_handler,     // Handler function
             NULL                                // User context: NULL (not used)
         };
         httpd_register_uri_handler(http_server_handle, &setEffect);
@@ -373,7 +437,7 @@ static httpd_handle_t http_server_configure(void)
         httpd_uri_t setTextTemplate{
             "/setTextTemplate",                     // URI
             HTTP_POST,                              // Method: POST
-            &http_server_post_handler,              // Handler function
+            &http_server_setTextTemplate_handler,              // Handler function
             NULL                                    // User context: NULL (not used)
         };
         httpd_register_uri_handler(http_server_handle, &setTextTemplate);
@@ -466,12 +530,14 @@ void http_server_start(void)
         uint32_t ip = ip_info.ip.addr;
         // reverse the order of bytes
         ip = (ip & 0xff000000) >> 24 |  (ip & 0xff0000) >> 8 | (ip & 0xff00) << 8 | (ip & 0xff) << 24;
-
+        
         http_server_matrices.push_front(MatrixInfo{
             esp_id,
             ip,
+            std::stoul(conf.getConfig("width")),
+            std::stoul(conf.getConfig("height")),
             -1,
-            wifi_app_config.enableAP ? "wsc-main" : std::string("wsc" + std::to_string(esp_id)).c_str()
+            conf.getConfig("tag", wifi_app_config.enableAP ? "wsc-main" : std::string("wsc" + std::to_string(esp_id)).c_str())
         });
 
         ESP_LOGI(TAG, "MatrixInfo ip:%lu and id:%lu", ip, esp_id);

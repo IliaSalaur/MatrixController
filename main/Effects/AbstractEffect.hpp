@@ -15,7 +15,9 @@ enum class EffectsEnum{
     CRAZYBEES,
     SPARKLES,
     WATERFALL,
+    SNOWFALL,
 
+    REMOTE_EFFECT = 96,
     TEXT_SEQUENCE = 97,
     TEXT = 98,
     NONE = 99
@@ -47,7 +49,7 @@ public:
      * 
      * @param fb a pointer to the Framebuffer object
      */
-    void setFrameBuffer(Framebuffer* fb)
+    virtual void setFrameBuffer(Framebuffer* fb)
     {
         m_fb = fb;
     }

@@ -56,6 +56,12 @@ public:
         this->_showSequence(0);
     }
 
+    void setFrameBuffer(Framebuffer* fb) override
+    {
+        m_fb = fb;
+        m_textEffect.setFrameBuffer(fb);
+    }
+
     esp_err_t generateFrame() override
     {
         esp_err_t res = m_textEffect.generateFrame();

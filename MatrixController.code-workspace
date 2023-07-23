@@ -79,6 +79,7 @@
 			"iomanip": "cpp",
 			"ranges": "cpp",
 			"valarray": "cpp"
-		}
+		},
+		"liveServer.settings.port": 81
 	}
 }

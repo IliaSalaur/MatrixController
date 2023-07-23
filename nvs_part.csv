@@ -1,0 +1,8 @@
+key,type,encoding,value
+storage,namespace,,0
+ssid,data,string,FiberHGW_TPBE8A_2.4GHz
+pass,data,string,LjVfNHKr
+width,data,string,16,
+height,data,string,16
+timezone,data,string,1234
+enableAP,data,string,0

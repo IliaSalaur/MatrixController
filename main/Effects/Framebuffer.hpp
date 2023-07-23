@@ -73,7 +73,23 @@ public:
      */
     size_t getFrameNumber();
 
+    /**
+     * @brief Get the color of specified pixel
+     * 
+     * @param x x -coordinate
+     * @param y y -coordinate
+     * @return rgb_t (color)
+     */
     rgb_t getPixel(size_t x, size_t y);
+
+    /**
+     * @brief Get the color of the specified pixel in HEX (0x00-RR-GG-BB)
+     * 
+     * @param x x -coordinate
+     * @param y y -coordinate
+     * @return 4byte hex (0x00-RR-GG-BB)
+     */
+    uint32_t getHEX(size_t x, size_t y);
 
     /**
      * @brief Set the rgb color of a pixel
@@ -122,6 +138,14 @@ public:
      * @return esp_err_t 
      */
     esp_err_t endFrame();
+
+    /**
+     * @brief Directly copies the data from dataPtr into the internal framebuffer's rgb_t array
+     * 
+     * @param dataPtr pointer to the data
+     * @param size how many bytes will be copied (will choose min value between size and fb's array size)
+     */
+    void copyIntoFramebuffer(const void* dataPtr, size_t size);
 
     /**
      * @brief Destroy the Framebuffer object, free the internal framebuffer_t

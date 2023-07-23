@@ -47,6 +47,12 @@ public:
         }
     } 
 
+    void setFrameBuffer(Framebuffer* fb)
+    {
+        m_fb = fb;
+        this->setScale(m_beesAmount);
+    }
+
     uint8_t getScale()
     {
         return m_beesAmount;
@@ -55,6 +61,8 @@ public:
     void setScale(uint8_t scale)
     {
         m_beesAmount = scale;
+        if(!m_fb) return;
+
         for (uint8_t i = 0; i < m_beesAmount; i++)
         {
             // set bee

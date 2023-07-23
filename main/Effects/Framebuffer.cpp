@@ -35,7 +35,7 @@ framebuffer_t *Framebuffer::_getFramebuffer()
 
 Framebuffer::Framebuffer(size_t width, size_t height, std::function<esp_err_t(Framebuffer &fb)> renderer) : m_fb{}, m_rendererCallback{renderer}
 {
-    pCurrentBuffer = this;
+    // pCurrentBuffer = this;
     ESP_ERROR_CHECK(fb_init(
         &m_fb,
         width,
@@ -90,6 +90,13 @@ rgb_t Framebuffer::getPixel(size_t x, size_t y)
     return color;
 }
 
+uint32_t Framebuffer::getHEX(size_t x, size_t y)
+{
+    rgb_t color{};
+    ESP_ERROR_CHECK(fb_get_pixel_rgb(&this->m_fb, x, y, &color));
+    return rgb_to_code(color);
+}
+
 void Framebuffer::setPixel(size_t x, size_t y, rgb_t color)
 {
     if (x >= m_fb.width || y >= m_fb.height)
@@ -125,6 +132,14 @@ esp_err_t Framebuffer::endFrame()
 {
     pCurrentBuffer = this;
     return fb_end(&m_fb);
+}
+
+void Framebuffer::copyIntoFramebuffer(const void *dataPtr, size_t size)
+{
+    memcpy(
+        m_fb.data, 
+        dataPtr, 
+        std::min(size, m_fb.width * m_fb.height * (size_t)sizeof(rgb_t)));
 }
 
 Framebuffer::~Framebuffer()

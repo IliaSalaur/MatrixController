@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <set>
 
 #include "Loaders/IConfigLoader.hpp"
 #include "AbstractListener.hpp"
@@ -13,6 +14,8 @@ class DynamicConfig
 {
 private:
     std::map<const std::string, std::string> _cfgs;
+    // Entries that will be stored only in RAM
+    std::set<std::string> _dynamicEntries;
     std::vector<AbstractListener*> _listeners;
 
     IConfigLoader* _loader;
@@ -31,7 +34,7 @@ private:
         }
     }
 public:
-    DynamicConfig(IConfigLoader* loader) : _cfgs(), _loader(loader){}    
+    DynamicConfig(IConfigLoader* loader) : _cfgs{}, _dynamicEntries{}, _loader{loader}{}    
 
     bool loadConfigs()
     {
@@ -41,15 +44,24 @@ public:
         return true;
     }
 
-    const std::string& getConfig(const std::string& cfgName)
+    const std::string& getConfig(const std::string& cfgName, const std::string& defaultValue="")
     {
-        if(_cfgs.find(cfgName) != _cfgs.end()) return _cfgs[cfgName];
-        return std::string{};
+        if(const auto it =_cfgs.find(cfgName); it != _cfgs.end()) return it->second;
+        return defaultValue;
     }
 
-    void saveConfig(const std::string& cfgName, const std::string&& cfgValue)
+    /**
+     * @brief Adds a new config or updates the existing one
+     * 
+     * @param cfgName config name
+     * @param cfgValue value to be stored
+     * @param isDynamicEntry if true -> config will be kept only in RAM, otherwise handed to the loader as usual
+     */
+    void saveConfig(const std::string& cfgName, const std::string&& cfgValue, bool isDynamicEntry = false)
     {
-        if(_cfgs[cfgName] == cfgValue) return;
+        // Return if value not updated
+        if(const auto& it = _cfgs.find(cfgName); it != _cfgs.end() && it->second == cfgValue)
+            return;
 
         for(const auto& listener : _listeners)
         {
@@ -57,8 +69,20 @@ public:
             if(listenSet.find(cfgName) != listenSet.end())  listener->valueUpdated(cfgName, cfgValue);
         }
 
-        _loader->saveConfig({cfgName, cfgValue});
-        _cfgs[cfgName] = std::move(cfgValue);                 
+        _cfgs[cfgName] = std::move(cfgValue);
+
+        bool entryInSet = _dynamicEntries.contains(cfgValue);
+
+        if(isDynamicEntry)
+        {
+            if(!entryInSet)
+                _dynamicEntries.insert(std::move(cfgName));
+            return;
+        }
+
+        if(!entryInSet)
+            _loader->saveConfig({cfgName, cfgValue});
+                         
     }
 
     const std::string& operator[](const std::string& cfgName){

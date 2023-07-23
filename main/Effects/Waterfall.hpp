@@ -34,7 +34,7 @@ public:
         m_cooling{}, 
         m_sparking{}, 
         m_palette{},
-        m_map(fb->getWidth() * fb->getHeight(), 0)        
+        m_map(m_fb ? m_fb->getWidth() * m_fb->getHeight() : 1, 0)        
     {
 
     }
@@ -76,6 +76,12 @@ public:
             redrawGradient
         );
     } 
+
+    void setFrameBuffer(Framebuffer* fb) override
+    {
+        m_fb = fb;
+        m_map.resize(m_fb->getHeight() * m_fb->getWidth(), 0);
+    }
 
     void setMode(mode_e mode)
     {

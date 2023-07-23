@@ -42,17 +42,18 @@ struct TextTemplate
     // NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(TextTemplate, letterCol, backCol, displayTime, scrollTimes, textFilter, text, textFilterProps)
     friend void to_json(nlohmann::json& nlohmann_json_j, const TextTemplate& nlohmann_json_t)
     {
-        nlohmann_json_j["letterCol"] = nlohmann_json_t;
-        nlohmann_json_j["backCol"] = nlohmann_json_t;
-        nlohmann_json_j["displayTime"] = nlohmann_json_t;
-        nlohmann_json_j["scrollTimes"] = nlohmann_json_t;
-        nlohmann_json_j["text"] = nlohmann_json_t;
-        nlohmann_json_j["textFilter"] = nlohmann_json_t;
+        nlohmann_json_j["letterCol"] = nlohmann_json_t.letterCol;
+        nlohmann_json_j["backCol"] = nlohmann_json_t.backCol;
+        nlohmann_json_j["displayTime"] = nlohmann_json_t.displayTime;
+        nlohmann_json_j["scrollTimes"] = nlohmann_json_t.scrollTimes;
+        nlohmann_json_j["text"] = nlohmann_json_t.text;
+        nlohmann_json_j["textFilter"] = nlohmann_json_t.textFilter;
         nlohmann_json_j["textFilterProps"] = nlohmann_json_t.textFilterProps;
     }
 
     friend void from_json(const nlohmann::json& nlohmann_json_j, TextTemplate& nlohmann_json_t)
     {
+        ESP_LOGI(TT_JS_TAG, "FROM_JSON");
         nlohmann_json_t.text = nlohmann_json_j.value("text", std::string{});
         ESP_LOGI(TT_JS_TAG, "text: %s", nlohmann_json_t.text.c_str());
 
@@ -213,13 +214,14 @@ public:
         m_speed{100},
         m_font5x7{},
         m_font5x7Rus{},
-        m_x{(int)m_fb->getWidth()},
-        m_y{((int)fb->getHeight() - m_font5x7.getCharHeight()) / 2},
+        // m_fb is a pointer to a framebuffer, it could be null, so it is important to handle such corner cases
+        m_x{m_fb ? (int)m_fb->getWidth() : 0},
+        m_y{m_fb ? ((int)m_fb->getHeight() - m_font5x7.getCharHeight()) / 2 : 0},
         
         m_filter{nullptr},
         m_filterFb{
-            fb->getWidth(), 
-            fb->getHeight(), 
+            m_fb ? m_fb->getWidth() : 2, 
+            m_fb ? m_fb->getHeight() : 2, 
             std::bind(&TextEffect::_filterRenderer, this, std::placeholders::_1)
         }
     {
@@ -275,9 +277,20 @@ public:
     {
         m_template = textTemplate;
         m_scrollsLeft = textTemplate.scrollTimes;
-        m_x = (int)m_fb->getWidth();
+        m_x = m_fb ? (int)m_fb->getWidth() : 0;
         this->setFilter(textTemplate.textFilter, textTemplate.textFilterProps);
     }
+
+    void setFrameBuffer(Framebuffer* fb) override
+    {
+        m_fb = fb;
+
+        // Update the member's value, that depends on Framebuffer's props
+        m_x = (int)m_fb->getWidth();
+        m_y = (int)(m_fb->getHeight() - m_font5x7.getCharHeight()) / 2;
+        
+        m_filterFb.resize(m_fb->getWidth(), m_fb->getHeight());
+    }   
 
     void setSpeed(uint8_t speed)
     {
@@ -296,8 +309,9 @@ public:
             m_filter->setPropertiesFromMap(props);
             return;
         }
-
+        ESP_LOGI("textEffect", "Constructing m_filter");
         m_filter = EffectFactory::getEffect(&m_filterFb, filterEnum, props);
+        ESP_LOGI("textEffect", "m_filter constructed");
     }
 
     size_t getSrollsLeft()
@@ -332,7 +346,7 @@ public:
             // Text width in pixels
             const int textWidthPx = textLength * m_font5x7.getCharWidth();
 
-            ESP_LOGI("text_effect", "tmr is %lld; x is %d, textWidthPx is %d", tmr, m_x, textWidthPx);
+            //ESP_LOGI("text_effect", "tmr is %lld; x is %d, textWidthPx is %d", tmr, m_x, textWidthPx);
 
             // Check if the text is in the middle. If so -> wait.
             if(textWidthPx < m_fb->getWidth() && m_x == (m_fb->getWidth() - textWidthPx) / 2)
@@ -347,7 +361,7 @@ public:
                 m_x = (int)m_fb->getWidth();
 
                 --m_scrollsLeft;
-                ESP_LOGI("text", "Text is %s, scrollsLeft: %u", m_template.text.c_str(), m_scrollsLeft);
+                // ESP_LOGI("text", "Text is %s, scrollsLeft: %u", m_template.text.c_str(), m_scrollsLeft);
                 // Wait 3 iterations, 1 iteration == m_speed == one letter appearing
                 tmr += m_speed * 3;
             }

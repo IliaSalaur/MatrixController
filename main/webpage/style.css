@@ -38,7 +38,7 @@
 }
 
 /* ICONS SUPPORT */
-@font-face {
+/* @font-face {
   font-family: 'Material Icons';
   font-style: normal;
   font-weight: 100...800;
@@ -57,14 +57,16 @@
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
-  /* Support for all WebKit browsers. */
   -webkit-font-smoothing: antialiased;
-  /* Support for Safari and Chrome. */
   text-rendering: optimizeLegibility;
-  /* Support for Firefox. */
   -moz-osx-font-smoothing: grayscale;
-  /* Support for IE. */
   font-feature-settings: 'liga';
+} */
+
+.bw-icon{
+  filter: invert();
+  aspect-ratio: 1/1;
+  transition: all 0.3s ease-in-out;
 }
 
 html{
@@ -170,7 +172,8 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 span.colorpicker-palette{
-  font-size: 1.5rem;
+  display: flex;
+  height: 1.5rem;
 }
 
 input[type="color"]{
@@ -395,6 +398,7 @@ input[type="time"]
   align-self: flex-end;
   font-size: 1.8rem;
   font-weight: 500;
+  display: flex;
 }
 
 /* CARDS */

@@ -21,6 +21,7 @@ static const char TAG[] = "wifi_app";
 static const char mdnsTAG[] = "wifi_app mdns";
 
 static bool wifi_app_isStarted = false;
+static uint8_t wifi_app_recconTimes = 0;
 
 // Queue handle used to manipulate the main queue of events
 static QueueHandle_t wifi_app_queue_handle;
@@ -57,13 +58,17 @@ static bool query_mdns_host(const char *host_name)
 
 bool start_mdns()
 {
+    static bool mdns_inited = false;
     // deinit mdns if was disconnected
-    if(wifi_app_wasDisconnected)    mdns_free();
+    if(wifi_app_wasDisconnected && mdns_inited)    mdns_free();
     // init mdns
     esp_err_t err = mdns_init();
     if(err){
         ESP_LOGE(mdnsTAG, "MDNS failed with code %d:%s", err, esp_err_to_name(err));
+        mdns_inited = false;
     }
+
+    mdns_inited = true;
 
     // query wsc.local - if not found - launch mdns service
     if(wifi_app_config.enableAP || !query_mdns_host(WIFI_APP_MDNS_HOSTNAME))
@@ -107,7 +112,7 @@ static void wifi_app_event_handler(void* arg, esp_event_base_t event_base, int32
             ESP_LOGI(TAG, "EVENT -> AP Start");
             wifi_app_send_message(WIFI_APP_MSG_START_MDNS);
             // start http server
-            wifi_app_send_message(WIFI_APP_MSG_START_HTTP_SREVER);            
+            wifi_app_send_message(WIFI_APP_MSG_START_HTTP_SERVER);            
             break;
 
         case WIFI_EVENT_AP_STOP:
@@ -127,6 +132,7 @@ static void wifi_app_event_handler(void* arg, esp_event_base_t event_base, int32
 
         case WIFI_EVENT_STA_CONNECTED:
             ESP_LOGI(TAG, "EVENT -> STA connected to WiFi");
+            wifi_app_recconTimes = 0;
             break;
         
         case WIFI_EVENT_STA_DISCONNECTED:
@@ -151,7 +157,7 @@ static void wifi_app_event_handler(void* arg, esp_event_base_t event_base, int32
                 //start MDNS 
                 wifi_app_send_message(WIFI_APP_MSG_START_MDNS);
                 //start http server
-                wifi_app_send_message(WIFI_APP_MSG_START_HTTP_SREVER);
+                wifi_app_send_message(WIFI_APP_MSG_START_HTTP_SERVER);
                 // if(!mdnsState)  wifi_app_send_message(WIFI_APP_MSG_REGISTER_ON_HOST);
             }
             break;
@@ -275,7 +281,7 @@ static void wifi_app_task(void* pvParams)
         {
             switch (msg.msgID)
             {
-            case WIFI_APP_MSG_START_HTTP_SREVER:
+            case WIFI_APP_MSG_START_HTTP_SERVER:
                 ESP_LOGI(TAG, "MSG -> Start HTTP Server");
                 http_server_start();
                 break;
@@ -306,9 +312,22 @@ static void wifi_app_task(void* pvParams)
                 break;
 
             case WIFI_APP_MSG_RECONNECT_WIFI:
-                ESP_LOGI(TAG, "MSG -> WiFi Reconnect");
-                if(!wifi_app_config.enableAP) vTaskDelay(pdMS_TO_TICKS(1500));
+                ESP_LOGI(TAG, "MSG -> WiFi Reconnect: %u", wifi_app_recconTimes);
+
+                if(wifi_app_recconTimes > MAX_CONNECTION_RETRIES)
+                {
+                    wifi_app_config.enableAP = true;
+                    wifi_app_config.ssid = "WSC " + wifi_app_config.ssid;
+                    vTaskDelay(pdMS_TO_TICKS(3000));
+                    wifi_app_send_message(WIFI_APP_MSG_START_AP);                         
+                    break;
+                }       
+
+                if(!wifi_app_config.enableAP) 
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+    
                 ESP_ERROR_CHECK(esp_wifi_connect()); 
+                wifi_app_recconTimes++;
                 break;
 
             case WIFI_APP_MSG_START_MDNS:
@@ -338,7 +357,7 @@ void wifi_app_start(void)
     esp_log_level_set("wifi", ESP_LOG_NONE);
 
     // Create message queue
-    wifi_app_queue_handle = xQueueCreate(5, sizeof(wifi_app_queue_message_t));
+    wifi_app_queue_handle = xQueueCreate(10, sizeof(wifi_app_queue_message_t));
 
     // Start the WiFi application
     xTaskCreatePinnedToCore(&wifi_app_task, "wifi_app_task", WIFI_APP_TASK_STACK_SIZE, NULL, WIFI_APP_TASK_PRIORITY, NULL, WIFI_APP_TASK_CORE_ID);

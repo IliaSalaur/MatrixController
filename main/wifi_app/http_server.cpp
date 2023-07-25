@@ -31,6 +31,7 @@ extern DynamicConfig conf;
 
 // extern config loader
 extern NVSConfigLoader loader;
+extern SemaphoreHandle_t g_conf_mutex;
 
 extern QueueHandle_t g_animation_effects_queue;
 extern QueueHandle_t g_child_matrices_queue;
@@ -149,7 +150,6 @@ extern "C" esp_err_t http_server_setEffect_handler(httpd_req_t* req)
     ptr.release();
 
     ESP_LOGI(TAG, "setEffect -> ptr addr:%p", rawPtr);
-
     if(
         xQueueSend(
             g_animation_effects_queue, 
@@ -213,7 +213,14 @@ extern "C" esp_err_t http_server_setConfigs_handler(httpd_req_t* req)
             break;
         }
         
-        conf.saveConfig(confName, std::move(confValue));
+        if(xSemaphoreTake(g_conf_mutex, 10) == pdPASS)
+        {
+            conf.saveConfig(confName, std::move(confValue));
+            xSemaphoreGive(g_conf_mutex);
+        }
+        else{
+            ESP_LOGW("setConfigs", "failed to take the mutex in 10 ticks");
+        }
     }
     loader.commit();
 
@@ -279,7 +286,7 @@ extern "C" esp_err_t http_server_registerDevice_handler(httpd_req_t* req)
 
 extern "C" esp_err_t http_server_addChild_handler(httpd_req_t* req)
 {
-    ESP_LOGI(TAG, "register device requested");
+    ESP_LOGI(TAG, "add child requested");
 
     char buf[k_http_server_data_buffer_size]{0};
     /* Truncate if content length larger than the buffer */
@@ -322,13 +329,20 @@ extern "C" esp_err_t http_server_addChild_handler(httpd_req_t* req)
 
 extern "C" esp_err_t http_server_getConfigs_handler(httpd_req_t* req)
 {    
-    const json j = conf.getConfigs();
-    const std::string s = j.dump();
+    if(xSemaphoreTake(g_conf_mutex, 10) == pdPASS)
+    {
+        const json j = conf.getConfigs();
+        const std::string s = j.dump();
+        xSemaphoreGive(g_conf_mutex);
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    httpd_resp_send(req, (const char*) s.c_str(), s.size());
-    return ESP_OK;
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        httpd_resp_send(req, (const char*) s.c_str(), s.size());
+        return ESP_OK;
+    }
+    ESP_LOGW("getConfigs", "failed to take the mutex in 10 ticks");   
+    httpd_resp_send_500(req); 
+    return ESP_FAIL;
 }
 
 extern "C" esp_err_t http_server_getDevices_handler(httpd_req_t* req)
@@ -505,6 +519,15 @@ static httpd_handle_t http_server_configure(void)
         };
         httpd_register_uri_handler(http_server_handle, &registerDevice);        
 
+        // register /addChild handler
+        httpd_uri_t addChild{
+            "/addChild",                            // URI
+            HTTP_POST,                              // Method: POST
+            &http_server_addChild_handler,          // Handler function
+            NULL                                    // User context: NULL (not used)
+        };
+        httpd_register_uri_handler(http_server_handle, &addChild);        
+
         http_server_register_webpage(http_server_handle);
 
         // Return the HTTP server handle
@@ -534,10 +557,13 @@ void http_server_start(void)
         http_server_matrices.push_front(MatrixInfo{
             esp_id,
             ip,
-            std::stoul(conf.getConfig("width")),
-            std::stoul(conf.getConfig("height")),
+            16,
+            16,
+            // std::stoul(conf.getConfig("width")),
+            // std::stoul(conf.getConfig("height")),
             -1,
-            conf.getConfig("tag", wifi_app_config.enableAP ? "wsc-main" : std::string("wsc" + std::to_string(esp_id)).c_str())
+            // conf.getConfig("tag", wifi_app_config.enableAP ? "wsc-main" : std::string("wsc" + std::to_string(esp_id)).c_str())
+            wifi_app_config.enableAP ? "wsc-main" : std::string("wsc" + std::to_string(esp_id)).c_str()
         });
 
         ESP_LOGI(TAG, "MatrixInfo ip:%lu and id:%lu", ip, esp_id);

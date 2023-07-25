@@ -44,7 +44,7 @@ public:
         return true;
     }
 
-    const std::string& getConfig(const std::string& cfgName, const std::string& defaultValue="")
+    const std::string getConfig(const std::string& cfgName, const std::string& defaultValue="")
     {
         if(const auto it =_cfgs.find(cfgName); it != _cfgs.end()) return it->second;
         return defaultValue;

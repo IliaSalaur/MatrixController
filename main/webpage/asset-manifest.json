@@ -2,15 +2,20 @@
   "files": {
     "main.js": "/static/js/main.js",
     "static/js/chunk.27.js": "/static/js/chunk.27.js",
-    "static/media/plasmawaves.png": "/static/media/plasmawaves.png",
-    "static/media/crazybees.png": "/static/media/crazybees.png",
-    "static/media/rainbow.png": "/static/media/rainbow.png",
-    "static/media/waterfall.png": "/static/media/waterfall.png",
-    "static/media/matrix.png": "/static/media/matrix.png",
-    "static/media/fire.png": "/static/media/fire.png",
-    "static/media/sparkles.png": "/static/media/sparkles.png",
+    "static/media/plasmawaves.svg": "/static/media/plasmawaves.svg",
+    "static/media/fire.svg": "/static/media/fire.svg",
+    "static/media/waterfall.svg": "/static/media/waterfall.svg",
+    "static/media/matrix.svg": "/static/media/matrix.svg",
+    "static/media/crazybees.svg": "/static/media/crazybees.svg",
+    "static/media/sparkles.svg": "/static/media/sparkles.svg",
+    "static/media/rainbow.svg": "/static/media/rainbow.svg",
+    "static/media/palette.svg": "/static/media/palette.svg",
     "static/media/add.svg": "/static/media/add.svg",
-    "index.html": "/index.html"
+    "index.html": "/index.html",
+    "static/media/snowfall.svg": "/static/media/snowfall.svg",
+    "static/media/close.svg": "/static/media/close.svg",
+    "static/media/menu.svg": "/static/media/menu.svg",
+    "static/media/chevron.svg": "/static/media/chevron.svg"
   },
   "entrypoints": [
     "static/js/main.js"

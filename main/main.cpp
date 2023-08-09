@@ -8,6 +8,7 @@
 #include "Freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "tasks_common.h"
 
 #include "nvs_flash.h"
 #include "esp_log.h"
@@ -15,6 +16,7 @@
 #include "wifi_app/wifi_app.h"
 #include "wifi_app/http_server.h"
 #include "wifi_app/WifiConfigListener.hpp"
+#include "wifi_app/MatrixInfo.hpp"
 
 #include "Matrix/WS2812Matrix.hpp"
 #include "Matrix/UdpMatrix.hpp"
@@ -150,11 +152,11 @@ extern "C" void matrixControlTask(void* pvParameter)
     xTaskCreatePinnedToCore(
         &animationTask,
         "anim_task",
-        8192,
+        ANIMATION_TASK_STACK_SIZE,
         NULL,
-        3,
+        ANIMATION_TASK_PRIORITY,
         NULL,
-        0
+        ANIMATION_TASK_CORE_ID
     );
 
     while (1)
@@ -177,16 +179,10 @@ extern "C" void matrixChildTask(void* pvParameter)
 
             std::unique_ptr<MatrixInfo> childMatrixPtr{ptr};
 
-            char ipBuf[32]{};
-            esp_ip4_addr esp_ip{childMatrixPtr->ip};
-            snprintf(ipBuf, 32, IPSTR, IP2STR(&esp_ip));
-
-            ESP_LOGI("matrix_child_task", "IP of the child matrix:%s", ipBuf);
-
             IMatrix* childMatrix = new UdpMatrix{
                 (uint8_t)childMatrixPtr->width, 
                 (uint8_t)childMatrixPtr->height, 
-                ipBuf};
+                *childMatrixPtr};
 
             childMatrix->begin();       
 
@@ -221,21 +217,21 @@ extern "C" void app_main(void)
     xTaskCreatePinnedToCore(
         &matrixControlTask,
         "matrix_control_task",
-        8192,
+        MATRIX_CONTROL_TASK_STACK_SIZE,
         NULL,
-        3,
+        MATRIX_CONTROL_TASK_PRIORITY,
         NULL,
-        0
+        MATRIX_CONTROL_TASK_CORE_ID
     );
 
     // MatrixChild Task
     xTaskCreatePinnedToCore(
         &matrixChildTask,
         "matrix_child_task",
-        4096,
+        MATRIX_CHILD_TASK_STACK_SIZE,
         NULL,
-        3,
+        MATRIX_CHILD_TASK_PRIORITY,
         NULL,
-        0
+        MATRIX_CHILD_TASK_CORE_ID
     );
 }

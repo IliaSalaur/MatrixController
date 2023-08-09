@@ -8,20 +8,23 @@
 #include "http_webpage_handlers.hpp"
 #include "tasks_common.h"
 #include "wifi_app.h"
-#include "esp_http_client.h"
 
 #include "DynamicConfig/DynamicConfig.hpp"
 #include "DynamicConfig/Loaders/NVSConfigLoader.hpp"
 
 #include "Effects/EffectFactory.hpp"
-#include "Effects/Animation.hpp"
+#include "Effects/RemoteEffect.hpp"
 #include "TextEffect/TextSequenceEffect.hpp"
+
+#include "MatrixInfo.hpp"
 
 #include "nlohmann/json.hpp"
 
 using nlohmann::json;
 
 static const char TAG[] = "http_server";
+
+extern std::list<MatrixInfo> http_server_matrices;
 
 //extern wifi configs
 extern WifiAppConfig wifi_app_config;
@@ -38,13 +41,74 @@ extern QueueHandle_t g_child_matrices_queue;
 
 // HTTP server task handle
 static httpd_handle_t http_server_handle = NULL;
+static TaskHandle_t http_server_pingHostTask_handle{nullptr};
 
-// list holding all matrices
-std::list<MatrixInfo> http_server_matrices{};
-
-void http_server_register_on_host()
+static bool http_server_notify_host(MatrixInfo& m_hostMatrixInfo)
 {
-    char local_response_buffer[k_http_server_data_buffer_size]{0};
+    char local_response_buffer[256]{0};
+    char ipBuf[16]{};
+    ip_addr_t ipStruct{
+        ntohl(m_hostMatrixInfo.ip), 
+        IPADDR_TYPE_V4
+    };
+    ipaddr_ntoa_r(&ipStruct, ipBuf, 16);            
+    esp_http_client_config_t config = {
+        .host = ipBuf,
+        .path = "/addChild",
+        .query = "esp",
+        .event_handler = nullptr,
+        .user_data = local_response_buffer,        // Pass address of local buffer to get response
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    // POST
+    json j = http_server_matrices.front();
+    std::string data = j.dump();
+    char urlBuf[64]{};
+    snprintf(urlBuf, 64, "http://%s/addChild", ipBuf);
+    esp_http_client_set_url(client, urlBuf);
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, data.c_str(), data.length());
+    ESP_LOGI(re_tag, "notifying host: %s", urlBuf);
+    esp_err_t err = esp_http_client_perform(client);
+    if (err == ESP_OK) {
+        ESP_LOGI(re_tag, "HTTP POST Status = %d, content_length = %" PRId64,
+                esp_http_client_get_status_code(client),
+                esp_http_client_get_content_length(client));
+    } else {
+        ESP_LOGE(re_tag, "HTTP POST request failed: %s", esp_err_to_name(err));
+    }
+    esp_http_client_cleanup(client);
+    return err == ESP_OK;    
+}
+
+extern "C" void http_server_pingHostTask(void* pvParam);
+
+void http_server_pingHostTask_start()
+{
+    ESP_LOGI(TAG, "Launching http_server_pingHostTask");
+
+    xTaskCreatePinnedToCore(
+        http_server_pingHostTask,
+        "pingHostTask",
+        HTTP_SERVER_PINGHOST_TASK_STACK_SIZE,
+        nullptr,
+        HTTP_SERVER_PINGHOST_TASK_PRIORITY,
+        &http_server_pingHostTask_handle,
+        HTTP_SERVER_PINGHOST_TASK_CORE_ID
+    );
+}
+
+static void http_server_pingHostTask_stop()
+{
+    if(http_server_pingHostTask_handle)
+        xTaskNotifyGive(http_server_pingHostTask_handle);
+}
+
+extern "C" void http_server_pingHostTask(void* pvParam)
+{
+    ESP_LOGI(TAG, "pingHostTask starting");
+    char local_response_buffer[256]{0};
     esp_http_client_config_t config = {
         .host = WIFI_APP_API_HOSTNAME,
         .path = "/registerDevice",
@@ -62,16 +126,29 @@ void http_server_register_on_host()
     esp_http_client_set_method(client, HTTP_METHOD_POST);
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, data.c_str(), data.length());
-    esp_err_t err = esp_http_client_perform(client);
 
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %" PRId64,
-                esp_http_client_get_status_code(client),
-                esp_http_client_get_content_length(client));
-    } else {
-        ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
-    }
-    esp_http_client_cleanup(client);
+    ESP_LOGI(TAG, "pingHostTask started");
+
+    while(1)
+    {        
+        esp_err_t err = esp_http_client_perform(client);
+
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %" PRId64,
+                    esp_http_client_get_status_code(client),
+                    esp_http_client_get_content_length(client));
+        } else {
+            ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+        }
+        
+        if(ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(9000)) == pdPASS)
+        {
+            ESP_LOGI(TAG, "Stoping pingHostTask");
+            esp_http_client_cleanup(client);
+            http_server_pingHostTask_handle = nullptr;
+            vTaskDelete(nullptr);
+        }
+    }    
 }
 
 /**
@@ -161,6 +238,51 @@ extern "C" esp_err_t http_server_setEffect_handler(httpd_req_t* req)
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_send(req, "ok", 3);
+
+    return ESP_OK;
+}
+
+extern "C" esp_err_t http_server_registerAsChild_handler(httpd_req_t* req)
+{
+    ESP_LOGI(TAG, "registerAsChild requested");
+
+    char buf[k_http_server_data_buffer_size]{};
+
+    size_t recv_size = MIN(req->content_len, k_http_server_data_buffer_size);
+    ESP_LOGI("post", "LEN:%u, cutted:%u", req->content_len, recv_size);
+
+    int ret = httpd_req_recv(req, buf, recv_size);
+    if (ret <= 0) {
+        if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
+            httpd_resp_send_408(req);
+        }
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "POST data: |%s|", buf);
+    json j = json::parse(buf);
+    ESP_LOGI(TAG, "JSON Done");
+
+    MatrixInfo mInfo = j.get<MatrixInfo>();
+
+    RemoteEffect* remEf = new RemoteEffect{nullptr};
+
+    ESP_LOGI(TAG, "registerAsChild -> ptr addr:%p", remEf);
+    if(
+        xQueueSend(
+            g_animation_effects_queue, 
+            static_cast<void*>(&remEf), 
+            1)  != pdPASS) {
+      ESP_LOGW("post", "failed to send data to the queue in one tick");
+    }
+    
+    http_server_pingHostTask_stop();
+    
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_send(req, "ok", 3);
+
+    http_server_notify_host(mInfo);
 
     return ESP_OK;
 }
@@ -414,7 +536,7 @@ static httpd_handle_t http_server_configure(void)
     config.stack_size = HTTP_SERVER_TASK_STACK_SIZE;
 
     // Increase uri handlers
-    config.max_uri_handlers = 40;
+    config.max_uri_handlers = 45;
 
     // Increase the timeout limit
     config.recv_wait_timeout = 10;
@@ -526,7 +648,24 @@ static httpd_handle_t http_server_configure(void)
             &http_server_addChild_handler,          // Handler function
             NULL                                    // User context: NULL (not used)
         };
-        httpd_register_uri_handler(http_server_handle, &addChild);        
+        httpd_register_uri_handler(http_server_handle, &addChild);  
+
+        httpd_uri_t registerAsChild{
+            "/registerAsChild",                     // URI
+            HTTP_POST,                              // Method: POST
+            &http_server_registerAsChild_handler,   // Handler function
+            NULL                                    // User context: NULL (not used)
+        };
+        httpd_register_uri_handler(http_server_handle, &registerAsChild);        
+
+        // register /registerAsChild(cors preflight OPTIONS) handler
+        httpd_uri_t corsPreflightRegisterAsChild{
+            "/registerAsChild",                           // URI
+            HTTP_OPTIONS,                           // Method: OPTIONS
+            &http_server_corsPreflight_handler,     // Handler function
+            NULL                                    // User context: NULL (not used)
+        };
+        httpd_register_uri_handler(http_server_handle, &corsPreflightRegisterAsChild);
 
         http_server_register_webpage(http_server_handle);
 
@@ -550,10 +689,9 @@ void http_server_start(void)
         esp_netif_ip_info_t ip_info{};
         ESP_ERROR_CHECK(esp_netif_get_ip_info(wifi_app_config.enableAP ? esp_netif_ap : esp_netif_sta, &ip_info));        
 
-        uint32_t ip = ip_info.ip.addr;
+        uint32_t ip = htonl(ip_info.ip.addr);
         // reverse the order of bytes
-        ip = (ip & 0xff000000) >> 24 |  (ip & 0xff0000) >> 8 | (ip & 0xff00) << 8 | (ip & 0xff) << 24;
-        
+        // ip = (ip & 0xff000000) >> 24 |  (ip & 0xff0000) >> 8 | (ip & 0xff00) << 8 | (ip & 0xff) << 24;        
         http_server_matrices.push_front(MatrixInfo{
             esp_id,
             ip,

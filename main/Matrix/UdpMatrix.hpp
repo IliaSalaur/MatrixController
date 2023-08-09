@@ -4,6 +4,7 @@
 #include "IMatrix.hpp"
 #include <string>
 #include <vector>
+#include "wifi_app/MatrixInfo.hpp"
 
 class UdpMatrix : public IMatrix
 {
@@ -12,7 +13,7 @@ private:
     uint8_t m_brig;    
     TaskHandle_t m_taskHandle;
     std::vector<rgb_t> m_pixels;
-    std::string m_hostIP;
+    MatrixInfo m_childMatrixInfo;
 
 
     static void _taskWrapper(void* pvParameter);
@@ -20,7 +21,7 @@ private:
     void _redraw() override;
     void _drawPixel(int x, int y, rgb_t col) override;
 public:
-    UdpMatrix(uint8_t w, uint8_t h, std::string&& hostIP);
+    UdpMatrix(uint8_t w, uint8_t h, MatrixInfo matrixInfo);
     void begin() override;
     void setBrightness(uint8_t brig) override;
 };

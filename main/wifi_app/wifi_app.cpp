@@ -308,7 +308,7 @@ static void wifi_app_task(void* pvParams)
 
             case WIFI_APP_MSG_REGISTER_ON_HOST:
                 ESP_LOGI(TAG, "MSG -> Register on host");
-                http_server_register_on_host();
+                http_server_pingHostTask_start();
                 break;
 
             case WIFI_APP_MSG_RECONNECT_WIFI:

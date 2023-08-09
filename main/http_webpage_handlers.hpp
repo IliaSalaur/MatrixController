@@ -106,6 +106,7 @@ static const std::map<std::string, BinHandlerData> handlers{
     {"/timer", {index_html_gz_start, index_html_gz_end, "text/html"}},
     {"/weather", {index_html_gz_start, index_html_gz_end, "text/html"}},
     {"/settings", {index_html_gz_start, index_html_gz_end, "text/html"}},
+    {"/sync", {index_html_gz_start, index_html_gz_end, "text/html"}},
     {"/style.css", {style_css_start, style_css_end, "text/css", ""}},
     {"/favicon.ico", {favicon_ico_start, favicon_ico_end, "image/x-icon", ""}},
     // {"/icons.woff2", {icons_woff2_start, icons_woff2_end, "font/woff2"}},

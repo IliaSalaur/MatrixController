@@ -1,15 +1,9 @@
 #include "UdpMatrix.hpp"
-#include <functional>
 
-#include <sys/param.h>
-#include "freertos/FreeRTOS.h"
+#include <functional>
 #include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "esp_system.h"
-#include "esp_event.h"
+#include "tasks_common.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
-#include "esp_netif.h"
 
 #include "lwip/err.h"
 #include "lwip/sockets.h"
@@ -24,9 +18,9 @@ void UdpMatrix::_taskWrapper(void* pvParameter)
     UdpMatrix* matrixPtr{static_cast<UdpMatrix*>(pvParameter)};
 
     while (1) {
-
+        //ip already in network byte order
         struct sockaddr_in dest_addr;
-        dest_addr.sin_addr.s_addr = inet_addr(matrixPtr->m_hostIP.c_str());
+        dest_addr.sin_addr.s_addr = ntohl(matrixPtr->m_childMatrixInfo.ip);
         dest_addr.sin_family = AF_INET;
         dest_addr.sin_port = htons(k_host_port);
 
@@ -35,14 +29,15 @@ void UdpMatrix::_taskWrapper(void* pvParameter)
             ESP_LOGE(um_tag, "Unable to create socket: errno %d", errno);
             break;
         }
-
-        // Set timeout
+        // Settings socket options
         struct timeval timeout;
         timeout.tv_sec = 10;
         timeout.tv_usec = 0;
         setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        bool keepAlive{true};
+        setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(keepAlive));        
 
-        ESP_LOGI(um_tag, "Socket created, sending to %s:%d", matrixPtr->m_hostIP.c_str(), k_host_port);
+        ESP_LOGI(um_tag, "Socket created, sending to %lu:%d", matrixPtr->m_childMatrixInfo.ip, k_host_port);
 
         while (1) {
 
@@ -84,7 +79,7 @@ void UdpMatrix::_taskWrapper(void* pvParameter)
             //     ESP_LOGI(um_tag, "%s", rx_buffer);
             // }
 
-            vTaskDelay(pdMS_TO_TICKS(50));
+            vTaskDelay(pdMS_TO_TICKS(10));
             vTaskSuspend(NULL);
         }
 
@@ -97,14 +92,14 @@ void UdpMatrix::_taskWrapper(void* pvParameter)
     }
 }
 
-UdpMatrix::UdpMatrix(uint8_t w, uint8_t h, std::string&& hostIP)
+UdpMatrix::UdpMatrix(uint8_t w, uint8_t h, MatrixInfo matrixInfo)
     :
     IMatrix{w, h},
     m_redrawRequired{true},
     m_brig{100},
     m_taskHandle{nullptr},
     m_pixels(w * h, rgb_t{0, 0, 0}),
-    m_hostIP{hostIP}
+    m_childMatrixInfo{matrixInfo}
 {
 
 }
@@ -133,10 +128,19 @@ size_t UdpMatrix::_xyToIndex(uint8_t x, uint8_t y)
 void UdpMatrix::begin()
 {
     ESP_LOGI(um_tag, "Creating task...");
-    xTaskCreatePinnedToCore(UdpMatrix::_taskWrapper, "udp_client", 4096, this, 4, &this->m_taskHandle, 0);
+    xTaskCreatePinnedToCore(
+        UdpMatrix::_taskWrapper, 
+        "udp_client", 
+        UDP_CLIENT_TASK_STACK_SIZE, 
+        this, 
+        UDP_CLIENT_TASK_PRIORITY, 
+        &this->m_taskHandle, 
+        UDP_CLIENT_TASK_CORE_ID
+    );
     ESP_LOGI(um_tag, "Task created! m_taskHandle = %p", &m_taskHandle);
 }
 
 void UdpMatrix::setBrightness(uint8_t brig)
 {
+    
 }

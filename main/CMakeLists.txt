@@ -1,5 +1,15 @@
 idf_component_register(
-    SRCS "main.cpp" "wifi_app/wifi_app.cpp" "wifi_app/http_server.cpp" "Matrix/IMatrix.cpp" "Matrix/UdpMatrix.cpp" "Matrix/WS2812Matrix.cpp" "Matrix/UartMatrix.cpp" "Effects/Framebuffer.cpp" "DynamicConfig/Loaders/NVSConfigLoader.cpp"
+    SRCS 
+        "main.cpp" 
+        "wifi_app/wifi_app.cpp" 
+        "wifi_app/http_server.cpp"
+        "wifi_app/MatrixInfo.cpp"
+        "Matrix/IMatrix.cpp" 
+        "Matrix/UdpMatrix.cpp" 
+        "Matrix/WS2812Matrix.cpp" 
+        "Matrix/UartMatrix.cpp" 
+        "Effects/Framebuffer.cpp" 
+        "DynamicConfig/Loaders/NVSConfigLoader.cpp"        
     INCLUDE_DIRS "."
     EMBED_FILES 
         "webpage/index.html.gz"        

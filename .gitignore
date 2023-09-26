@@ -6,9 +6,6 @@ managed_components
 web/node_modules
 web/config
 web/scripts
-web1/node_modules
-web1/config
-web1/scripts
 web_copy/node_modules
 web_copy/config
 web_copy/scripts

@@ -30,10 +30,16 @@ extern esp_netif_t* esp_netif_sta;
 extern esp_netif_t* esp_netif_ap;
 
 // config object
+// struct WifiAppConfig{
+//     std::string ssid{WIFI_AP_SSID};
+//     std::string pass{WIFI_AP_PASSWORD};
+//     bool enableAP{true};
+// };
+
 struct WifiAppConfig{
-    std::string ssid{WIFI_AP_SSID};
-    std::string pass{WIFI_AP_PASSWORD};
-    bool enableAP{true};
+    std::string ssid{"Wokwi-GUEST"};
+    std::string pass{""};
+    bool enableAP{false};
 };
 
 /**

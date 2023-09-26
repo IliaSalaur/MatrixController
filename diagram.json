@@ -1,0 +1,24 @@
+{
+    "version": 1,
+    "author": "Ilia Salaur",
+    "editor": "wokwi",
+    "parts": [
+      { "type": "board-esp32-c3-devkitm-1", "id": "esp", "top": -39.39, "left": 9.38, "attrs": {} },
+      {
+        "type": "wokwi-neopixel-matrix",
+        "id": "neopixels",
+        "top": 95.32,
+        "left": -494.66,
+        "rotate": 180,
+        "attrs": { "rows": "16", "cols": "16", "pin": "3", "pixelate":"circle"}
+      }
+    ],
+    "connections": [
+      [ "esp:TX", "$serialMonitor:RX", "", [] ],
+      [ "esp:RX", "$serialMonitor:TX", "", [] ],
+      [ "esp:GND.2", "neopixels:GND", "black", [ "v0", "*", "v-10" ] ],
+      [ "esp:5V.1", "neopixels:VCC", "red", [ "v0", "*", "v-15" ] ],
+      [ "esp:8", "neopixels:DIN", "green", [ "v0", "*", "v-5" ] ]
+    ],
+    "dependencies": {}
+  }

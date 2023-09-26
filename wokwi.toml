@@ -1,0 +1,8 @@
+[wokwi]
+version = 1
+firmware = 'build/WS2812Controller.bin'
+elf = 'build/WS2812Controller.elf'
+
+[[net.forward]]
+from = "localhost:8180"
+to = "target:80"

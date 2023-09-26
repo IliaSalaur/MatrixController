@@ -62,7 +62,8 @@ extern "C" void animationTask(void* pvParameter)
     Framebuffer fb{16, 16, std::bind(&WS2812Matrix::renderer, matrix, std::placeholders::_1)};
 
     Animation anim{&fb, 30};
-    std::unique_ptr<AbstractEffect> effect{nullptr};
+    std::unique_ptr<AbstractEffect> effect{EffectFactory::getEffect(&fb, EffectsEnum::FIRE)};
+    anim.play(effect.get());
 
     g_animation_effects_queue = xQueueCreate(5, sizeof(AbstractEffect*));
     g_animation_msg_queue = xQueueCreate(5, sizeof(AnimationTaskMsgEnum));

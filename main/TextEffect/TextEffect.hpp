@@ -4,86 +4,18 @@
 #include <string>
 #include <memory>
 
-#include "Fonts.h"
-#include "Effects/AbstractEffect.hpp"
 #include "Effects/EffectFactory.hpp"
 
-#include "nlohmann/json.hpp"
-using nlohmann::json;
+#include "TextTemplate.hpp"
 
-static const char* TT_JS_TAG = "textTemplate_json";
-
-struct TextTemplate
-{    
-    uint32_t letterCol;
-    uint32_t backCol;
-    size_t displayTime;
-    size_t scrollTimes;
-    EffectsEnum textFilter;    
-    std::string text;
-    effect_properties_t textFilterProps;
-
-    TextTemplate() : letterCol{0}, backCol{0}, displayTime{0}, scrollTimes{0}, textFilter{EffectsEnum::NONE}, text{}, textFilterProps{}
-    {
-
-    }
-    
-    TextTemplate(uint32_t letterCol_, uint32_t backCol_, size_t displayTime_, size_t scrollTimes_, EffectsEnum textFilter_, std::string text_, effect_properties_t textFilterProperties_)
-        :
-        letterCol{letterCol_},
-        backCol{backCol_},
-        displayTime{displayTime_},
-        scrollTimes{scrollTimes_},
-        textFilter{textFilter_},    
-        text{std::move(text_)},
-        textFilterProps{std::move(textFilterProperties_)}
-    {}
-
-    // NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(TextTemplate, letterCol, backCol, displayTime, scrollTimes, textFilter, text, textFilterProps)
-    friend void to_json(nlohmann::json& nlohmann_json_j, const TextTemplate& nlohmann_json_t)
-    {
-        nlohmann_json_j["letterCol"] = nlohmann_json_t.letterCol;
-        nlohmann_json_j["backCol"] = nlohmann_json_t.backCol;
-        nlohmann_json_j["displayTime"] = nlohmann_json_t.displayTime;
-        nlohmann_json_j["scrollTimes"] = nlohmann_json_t.scrollTimes;
-        nlohmann_json_j["text"] = nlohmann_json_t.text;
-        nlohmann_json_j["textFilter"] = nlohmann_json_t.textFilter;
-        nlohmann_json_j["textFilterProps"] = nlohmann_json_t.textFilterProps;
-    }
-
-    friend void from_json(const nlohmann::json& nlohmann_json_j, TextTemplate& nlohmann_json_t)
-    {
-        ESP_LOGI(TT_JS_TAG, "FROM_JSON");
-        nlohmann_json_t.text = nlohmann_json_j.value("text", std::string{});
-        ESP_LOGI(TT_JS_TAG, "text: %s", nlohmann_json_t.text.c_str());
-
-        nlohmann_json_t.letterCol = std::stoul(nlohmann_json_j.value("letterCol", std::string{"#0"}).substr(1), nullptr, 16);
-        nlohmann_json_t.backCol = std::stoul(nlohmann_json_j.value("backCol", std::string{"#0"}).substr(1), nullptr, 16);
-
-        ESP_LOGI(TT_JS_TAG, "cols: %lu and %lu", nlohmann_json_t.letterCol, nlohmann_json_t.backCol);
-        nlohmann_json_t.displayTime = nlohmann_json_j.value("displayTime", size_t{0});
-        nlohmann_json_t.scrollTimes = (size_t)nlohmann_json_j.value("scrollTimes", size_t{0});
-        nlohmann_json_t.textFilter = EffectsEnum{nlohmann_json_j.value("textFilter", 0)};
-
-        // nlohmann_json_t.displayTime = static_cast<size_t>(nlohmann_json_j.value("displayTime", int{0}));
-        // nlohmann_json_t.scrollTimes = static_cast<size_t>((size_t)nlohmann_json_j.value("scrollTimes", int{0}));
-        // nlohmann_json_t.textFilter = EffectsEnum::NONE;
-        // nlohmann_json_t.textFilter = EffectsEnum{nlohmann_json_j.value("textFilter", 0)};
-        // nlohmann_json_t.textFilter = EffectsEnum{std::stoi(nlohmann_json_j.value("textFilter", "0"))};
-
-        nlohmann_json_t.textFilterProps = effect_properties_t{};
-        nlohmann_json_t.textFilterProps = nlohmann_json_j.value("textFilterProps", effect_properties_t{});
-        ESP_LOGI(TT_JS_TAG, "done");
-    }
-};
+#define TEXT_EF_LOG(x...) 
 
 class TextEffect : public AbstractEffect
 {
 private:
     TextTemplate m_template;
     uint8_t m_speed;
-    Font5x7 m_font5x7;
-    Font5x7Rus m_font5x7Rus;
+    
     int m_x;
     int m_y; 
     size_t m_scrollsLeft;
@@ -93,7 +25,7 @@ private:
 
     esp_err_t _filterRenderer(Framebuffer& fb)
     {
-        ESP_LOGI("text_effect", "Filter renderer called");
+        TEXT_EF_LOG("text_effect", "Filter renderer called");
         return ESP_OK;
     }   
 
@@ -111,44 +43,67 @@ private:
     }
 
     /**
-     * @brief Draws a letter at the given coordinate with the given colors
+     * @brief Draws a glyph
      * 
-     * @param x x coordinate
-     * @param y y coordinate
+     * @param xPos x coordinate
+     * @param yPos y coordinate
      * @param letCol Color of the letter. The function will affect only the coordinates, that are within the letter's outline
-     * @param letter char, if it is a multi char, ignores the first part and treats the char after as a cyrillyc one
-     * @return true if the letter is succesfully displayed
-     * @return false if the last char was a multipart one and the method should be called again
+     * @param glyph 
+     * @param font 
      */
-    bool drawLetter(int x, uint8_t y, uint32_t letCol, char letter)
-    {            
-        static bool lastRus = false;
-        static char lastChar = 0;
-        // char buf[3] = {lastChar, letter, 0};
-        // Fm("index: %d, char:%s\n", !lastRus ? letter : (int)(int(lastChar) << 8) | int(letter), buf)
-        if(letter > 200)
+    void drawGlyph(int xPos, int yPos, uint32_t letCol, const GFXglyph& glyph, const GFXfont* font)
+    {
+        const uint8_t* bitmapPtr = font->bitmap + glyph.bitmapOffset;
+        for(size_t bit = 0, x = 0, y = 0; bit < glyph.height * glyph.width; bit++, x = bit % glyph.width, y += (bit + 1) % glyph.width == 0)
         {
-            lastRus = true;
-            lastChar = letter;
-            return false;
-        }
+            // printf("%s%s",
+            // bitmapPtr[bit / 8] & (128 >> (bit % 8)) ? "#" : " ",
+            // (bit + 1) % glyph.width ? "" : "\n");       
 
-        const uint8_t* fontBytes = lastRus ? m_font5x7Rus.getBytes((int)(int(lastChar) << 8) | int(letter)) : m_font5x7.getBytes(int(letter));
-        for(uint8_t lx = 0; lx < 5; lx++)
-        {            
-            for(uint8_t ly = 0; ly < 7; ly++)
-            {   if(_isInBounds(lx + x, ly + y) && fontBytes[lx] & (1 << (m_font5x7.getCharHeight() - ly - 1)))
+            // check if in bounds and check if need to paint the pixel
+            if(_isInBounds(xPos + x, yPos + y) && (bitmapPtr[bit / 8] & (128 >> (bit % 8))))
                 m_fb->setPixel(
-                    lx + x,
-                    ly + y,
-                    (m_template.letterCol == 0xff000000 ? (m_filter ? m_filterFb.getPixel(lx + x, ly + y) : rgb_t{0, 0, 0}) : rgb_from_code(letCol))
+                    xPos + x,
+                    yPos + (glyph.height - y),
+                    (m_template.letterCol == 0xff000000 ? (m_filter ? m_filterFb.getPixel(xPos + x, yPos + y) : rgb_t{0, 0, 0}) : rgb_from_code(letCol))
                     // (m_template.letterCol == 0xff000000 ? rgb_t{0, 0, 0} : rgb_from_code(letCol))
                 );
-            }
         }
-        lastRus = false;
-        return true;
     }
+
+    /**
+     * @brief Draws a letter at the given coordinate with the given colors. Checks whenever the letter is cyrillic, gets the coresponding glyph 
+     * @param x x coordinate
+     * @param y y coordinate
+     * @param letter char, if it is a multi char, ignores the first part and treats the char after as a cyrillyc one
+     * @retval true if the letter is succesfully displayed
+     * @retval false if the letter isn't valid
+     */
+    // bool drawLetter(int x, uint8_t y, char letter)
+    // {         
+    //     static bool lastRus = false;
+    //     static char lastChar = 0;
+    //     // char buf[3] = {lastChar, letter, 0};
+    //     // Fm("index: %d, char:%s\n", !lastRus ? letter : (int)(int(lastChar) << 8) | int(letter), buf)
+    //     if(letter > 200)
+    //     {
+    //         lastRus = true;
+    //         lastChar = letter;
+    //         return false;
+    //     }        
+
+    //     if(lastRus)
+    //     {
+    //         letter = 
+    //             (lastChar == 208 && letter == 129) ? 192 :                  // recoding 'Ë' letter
+    //             ((lastChar == 209 && letter == 145) ? 193 : letter);        // recoding 'ё' letter
+    //     }
+
+    //     drawGlyph(m_x, m_y, m_template.letterCol, m_template.font->glyph[letter], m_template.font);
+
+    //     lastRus = false;
+    //     return true;
+    // }
 
     /**
      * @brief Handles text displaying routine
@@ -171,24 +126,51 @@ private:
         }
 
         // 1 - text spacing
-        for(int x = 0, i = 0; i < m_template.text.length(); x += m_font5x7.getCharWidth() + 1, i++)
-        {
-            bool res = drawLetter(
-                x + m_x,
-                m_y,
-                m_template.letterCol,
-                m_template.text[i] & 0xff
-            );
+        // for(int x = 0, i = 0; i < m_template.text.length(); x += m_template.font->glyph, i++)
+        // {
+        //     // bool res = drawLetter(
+        //     //     x + m_x,
+        //     //     m_y,
+        //     //     m_template.letterCol,
+        //     //     m_template.text[i] & 0xff
+        //     // );
 
-            if(!res)
+        //     // if(!res)
+        //     // {
+        //     //     drawLetter(
+        //     //         x + m_x,
+        //     //         m_y,
+        //     //         m_template.letterCol,
+        //     //         m_template.text[++i] & 0xff
+        //     //     );
+        //     // }
+
+        // }
+
+        int x = 0;
+        char lastC = 0;
+        for(char c : m_template.text)
+        {
+            if(c > 200)
             {
-                drawLetter(
-                    x + m_x,
-                    m_y,
-                    m_template.letterCol,
-                    m_template.text[++i] & 0xff
-                );
-            }
+                lastC = c;
+                continue;
+            }                            
+
+            auto const& [of, gW, gH, xAdv, xOff, yOff] = m_template.font->glyph[int(c) - m_template.font->first];
+            c = (lastC == 208 && c == 129) ? 192 :      // recoding 'Ë' letter
+                ((lastC == 209 && c == 145) ? 193 : c); // recoding 'ё' letter
+
+            drawGlyph(
+                x + m_x + xOff,
+                m_y - yOff, 
+                m_template.letterCol,
+                m_template.font->glyph[int(c) - m_template.font->first],
+                m_template.font);
+
+            lastC = 0;
+            
+            x += xAdv;
         }
     }
 
@@ -206,17 +188,38 @@ private:
         return l;
     }
 
+    size_t _getTextWidthPx(const std::string& str)
+    {
+        char lastC = 0;
+        size_t widthPx = 0;
+        for(char c : str)
+        {
+            if(c > 200)
+            {
+                lastC = c;
+                continue;
+            }                            
+
+            auto const& [of, gW, gH, xAdv, xOff, yOff] = m_template.font->glyph[int(c) - m_template.font->first];
+            c = (lastC == 208 && c == 129) ? 192 :      // recoding 'Ë' letter
+                ((lastC == 209 && c == 145) ? 193 : c); // recoding 'ё' letter
+            
+            widthPx += m_template.font->glyph[int(c) - m_template.font->first].xAdvance;
+        }
+
+        return widthPx;
+    }
+
 public:
     TextEffect(Framebuffer* fb, TextTemplate textTemplate)
         :
         AbstractEffect{fb, EffectsEnum::TEXT},
         m_template{textTemplate},
         m_speed{100},
-        m_font5x7{},
-        m_font5x7Rus{},
+
         // m_fb is a pointer to a framebuffer, it could be null, so it is important to handle such corner cases
         m_x{m_fb ? (int)m_fb->getWidth() : 0},
-        m_y{m_fb ? ((int)m_fb->getHeight() - m_font5x7.getCharHeight()) / 2 : 0},
+        m_y{7},
         
         m_filter{nullptr},
         m_filterFb{
@@ -238,38 +241,38 @@ public:
         if(const auto it = props.find("text"); it != props.end())
         {            
             m_template.text = it->second;
-            ESP_LOGI("text_effect", "Text set to %s", m_template.text.c_str());
+            TEXT_EF_LOG("text_effect", "Text set to %s", m_template.text.c_str());
         }
 
         if(const auto it = props.find("letterCol"); it != props.end())
         {
             m_template.letterCol = std::stoul(it->second, 0, 16);
-            ESP_LOGI("text_effect", "letterCol set to %lu", m_template.letterCol);
+            TEXT_EF_LOG("text_effect", "letterCol set to %lu", m_template.letterCol);
         }
 
         if(const auto it = props.find("backCol"); it != props.end())
         {
             m_template.backCol = std::stoul(it->second, 0, 16);
-            ESP_LOGI("text_effect", "backCol set to %lu", m_template.backCol);
+            TEXT_EF_LOG("text_effect", "backCol set to %lu", m_template.backCol);
         }
 
         if(const auto it = props.find("displayTime"); it != props.end())
         {
             m_template.displayTime = std::stoul(it->second);
-            ESP_LOGI("text_effect", "displayTime set to %u", m_template.displayTime);
+            TEXT_EF_LOG("text_effect", "displayTime set to %u", m_template.displayTime);
         }
 
         if(const auto it = props.find("scrollTimes"); it != props.end())
         {
             m_template.scrollTimes = std::stod(it->second);
             m_scrollsLeft = m_template.scrollTimes;
-            ESP_LOGI("text_effect", "scrollTimes set to %d", m_template.scrollTimes);
+            TEXT_EF_LOG("text_effect", "scrollTimes set to %d", m_template.scrollTimes);
         }
 
         // if(const auto it = props.find("textFilter"); it != props.end())
         // {
         //     m_template.textFilter = EffectsEnum(std::stoul(it->second));
-        //     ESP_LOGI("text_effect", "textFilter set to %d", int(m_template.textFilter));
+        //     TEXT_EF_LOG("text_effect", "textFilter set to %d", int(m_template.textFilter));
         // }
     } 
 
@@ -287,7 +290,8 @@ public:
 
         // Update the member's value, that depends on Framebuffer's props
         m_x = (int)m_fb->getWidth();
-        m_y = (int)(m_fb->getHeight() - m_font5x7.getCharHeight()) / 2;
+        // m_y = (int)(m_fb->getHeight() - m_font5x7.getCharHeight()) / 2;
+        m_y = 7;
         
         m_filterFb.resize(m_fb->getWidth(), m_fb->getHeight());
     }   
@@ -309,9 +313,9 @@ public:
             m_filter->setPropertiesFromMap(props);
             return;
         }
-        ESP_LOGI("textEffect", "Constructing m_filter");
+        TEXT_EF_LOG("textEffect", "Constructing m_filter");
         m_filter = EffectFactory::getEffect(&m_filterFb, filterEnum, props);
-        ESP_LOGI("textEffect", "m_filter constructed");
+        TEXT_EF_LOG("textEffect", "m_filter constructed");
     }
 
     size_t getSrollsLeft()
@@ -340,13 +344,11 @@ public:
 
             // Move the text            
             --m_x;                   
-
-            // Because of the UTF8 encoding, an actual character could spread up to 4 bytes.  
-            const size_t textLength = this->_getActualLength(m_template.text);
+            
             // Text width in pixels
-            const int textWidthPx = textLength * m_font5x7.getCharWidth();
+            const int textWidthPx = this->_getTextWidthPx(m_template.text);
 
-            //ESP_LOGI("text_effect", "tmr is %lld; x is %d, textWidthPx is %d", tmr, m_x, textWidthPx);
+            //TEXT_EF_LOG("text_effect", "tmr is %lld; x is %d, textWidthPx is %d", tmr, m_x, textWidthPx);
 
             // Check if the text is in the middle. If so -> wait.
             if(textWidthPx < m_fb->getWidth() && m_x == (m_fb->getWidth() - textWidthPx) / 2)
@@ -361,7 +363,7 @@ public:
                 m_x = (int)m_fb->getWidth();
 
                 --m_scrollsLeft;
-                // ESP_LOGI("text", "Text is %s, scrollsLeft: %u", m_template.text.c_str(), m_scrollsLeft);
+                // TEXT_EF_LOG("text", "Text is %s, scrollsLeft: %u", m_template.text.c_str(), m_scrollsLeft);
                 // Wait 3 iterations, 1 iteration == m_speed == one letter appearing
                 tmr += m_speed * 3;
             }

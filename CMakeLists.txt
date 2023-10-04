@@ -6,4 +6,5 @@ cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 set(EXTRA_COMPONENT_DIRS esp-idf-lib/components)
-project(WS2812Controller)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
+project(MatrixController)

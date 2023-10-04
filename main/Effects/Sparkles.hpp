@@ -1,4 +1,4 @@
-992#ifndef MY_SPARKLES_HPP
+#ifndef MY_SPARKLES_HPP
 #define MY_SPARKLES_HPP
 
 #include <cstdlib>
